@@ -1,0 +1,95 @@
+'use client'
+
+import { totalTiles } from '@/lib/geo'
+import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
+import { Map, Plus, RotateCcw } from 'lucide-react'
+
+type Props = {
+  coverageCount: number
+  showCoverage: boolean
+  onToggle: (v: boolean) => void
+  onAddRoute: () => void
+  onReset: () => void
+  justAdded: number | null
+  signedIn?: boolean
+}
+
+export function CoveragePanel({
+  coverageCount,
+  showCoverage,
+  onToggle,
+  onAddRoute,
+  onReset,
+  justAdded,
+  signedIn = false,
+}: Props) {
+  const total = totalTiles()
+  const pct = total ? (coverageCount / total) * 100 : 0
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Map className="size-4 text-primary" aria-hidden />
+          <span className="text-sm font-semibold text-foreground">
+            Your coverage
+          </span>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          Show grid
+          <Switch checked={showCoverage} onCheckedChange={onToggle} />
+        </label>
+      </div>
+
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="font-display text-3xl font-semibold tabular-nums text-foreground">
+            {pct.toFixed(1)}%
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {coverageCount.toLocaleString()} of {total.toLocaleString()} tiles
+            lit
+          </div>
+        </div>
+        {justAdded ? (
+          <span className="rounded-full bg-primary/15 px-2.5 py-1 text-xs font-medium text-primary">
+            +{justAdded} new tiles
+          </span>
+        ) : null}
+      </div>
+
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-all duration-700"
+          style={{ width: `${Math.min(100, Math.max(pct, 1.5))}%` }}
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <Button size="sm" className="flex-1" onClick={onAddRoute}>
+          <Plus className="size-4" />
+          Drive this route
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onReset}
+          aria-label="Reset coverage"
+        >
+          <RotateCcw className="size-4" />
+        </Button>
+      </div>
+      <p className="text-pretty text-xs leading-relaxed text-muted-foreground">
+        Every road you actually drive fills in the grid. Come back to chase the
+        blank squares in your own neighborhood.
+        {!signedIn ? (
+          <>
+            {' '}
+            Sign in to save tiles and trips across devices.
+          </>
+        ) : null}
+      </p>
+    </div>
+  )
+}

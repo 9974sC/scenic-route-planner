@@ -1,0 +1,20 @@
+# v0 sandbox internal files
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+
+# Environment variables
+.env*.local
+.env*
+
+# Local CSV user data (created on first register)
+data/*.csv
+data/user_seq.txt
+
+# Common ignores
+node_modules
+.next/
+.DS_Store
