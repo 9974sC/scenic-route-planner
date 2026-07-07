@@ -1,4 +1,0 @@
-allowBuilds:
-  esbuild: false
-  msw: true
-  sharp: true
