@@ -13,10 +13,15 @@ export type PublicUser = {
 export type TripSummary = {
   id: string
   startName: string
+  startLat: number
+  startLng: number
   endName: string
+  endLat: number
+  endLng: number
   distanceM: number
   durationS: number
   tilesAdded: string[]
+  routeCoords: [number, number][]
   drivenAt: string
 }
 

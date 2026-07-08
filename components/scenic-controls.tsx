@@ -1,6 +1,7 @@
 'use client'
 
 import type { ScenicWeights } from '@/lib/types'
+import { MAX_SPARE_MINUTES, fmtSpareMinutes } from '@/lib/scenic'
 import type { LatLng } from '@/lib/types'
 import type { RouteEndpoint } from '@/lib/places'
 import { PlacePicker } from '@/components/place-picker'
@@ -169,10 +170,18 @@ export function ScenicControls({
               </>
             ) : (
               <>
-                <span className="font-display text-2xl font-semibold tabular-nums text-time">
-                  +{budget}
+                <span className="font-display text-xl font-semibold tabular-nums text-time sm:text-2xl">
+                  {budget >= 60
+                    ? `+${Math.floor(budget / 60)}`
+                    : `+${budget}`}
                 </span>
-                <span className="ml-0.5 text-xs text-time/80">min</span>
+                <span className="ml-0.5 text-xs text-time/80">
+                  {budget >= 60
+                    ? budget % 60 > 0
+                      ? `h ${budget % 60}m`
+                      : 'h'
+                    : 'min'}
+                </span>
               </>
             )}
           </div>
@@ -183,14 +192,14 @@ export function ScenicControls({
             className="[&_[data-slot=slider-range]]:bg-time"
             value={[budget]}
             min={0}
-            max={45}
+            max={MAX_SPARE_MINUTES}
             step={5}
             onValueChange={(v) => onBudget(Array.isArray(v) ? v[0] : v)}
             aria-label="Time to spare in minutes"
           />
           <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
             <span>Fastest way</span>
-            <span>Up to +45 min</span>
+            <span>{fmtSpareMinutes(MAX_SPARE_MINUTES).replace(/^\+/, 'Up to +')}</span>
           </div>
         </div>
       </div>

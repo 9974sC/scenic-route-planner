@@ -7,6 +7,8 @@ import {
   fmtDuration,
   fmtElevationRange,
 } from '@/lib/scenic'
+import { pathOverlapRatio } from '@/lib/route-overlap'
+import { Button } from '@/components/ui/button'
 import {
   Clock,
   Route as RouteIcon,
@@ -14,11 +16,17 @@ import {
   Waves,
   Mountain,
   TrendingUp,
+  RotateCcw,
+  Loader2,
 } from 'lucide-react'
 
 type Props = {
   chosen: RouteCandidate
   direct: RouteCandidate
+  returnLeg?: RouteCandidate | null
+  onFindReturn?: () => void
+  onClearReturn?: () => void
+  returnLoading?: boolean
 }
 
 function Meter({
@@ -46,10 +54,22 @@ function Meter({
   )
 }
 
-export function RouteSummary({ chosen, direct }: Props) {
+export function RouteSummary({
+  chosen,
+  direct,
+  returnLeg = null,
+  onFindReturn,
+  onClearReturn,
+  returnLoading = false,
+}: Props) {
   const extraSec = chosen.duration - direct.duration
   const extraMin = Math.round(extraSec / 60)
   const isDirect = chosen.id === direct.id
+  const overlapPct = returnLeg
+    ? Math.round(pathOverlapRatio(chosen.coords, returnLeg.coords) * 100)
+    : null
+  const loopDistance = returnLeg ? chosen.distance + returnLeg.distance : null
+  const loopDuration = returnLeg ? chosen.duration + returnLeg.duration : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -57,9 +77,13 @@ export function RouteSummary({ chosen, direct }: Props) {
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <Clock className="size-5 shrink-0 text-time" aria-hidden />
           <span className="font-display text-3xl font-semibold tabular-nums text-time">
-            {fmtDuration(chosen.duration)}
+            {fmtDuration(returnLeg && loopDuration ? loopDuration : chosen.duration)}
           </span>
-          {isDirect ? (
+          {returnLeg ? (
+            <span className="rounded-full bg-teal-500/15 px-2.5 py-0.5 text-sm font-medium text-teal-700 dark:text-teal-300">
+              Round trip
+            </span>
+          ) : isDirect ? (
             <span className="text-sm font-medium text-muted-foreground">
               Fastest way
             </span>
@@ -72,9 +96,18 @@ export function RouteSummary({ chosen, direct }: Props) {
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           <span className="inline-flex items-center gap-1.5 tabular-nums">
             <RouteIcon className="size-4 shrink-0" aria-hidden />
-            {fmtDistance(chosen.distance)}
+            {fmtDistance(returnLeg && loopDistance ? loopDistance : chosen.distance)}
           </span>
-          {chosen.elevation && (
+          {returnLeg && overlapPct !== null ? (
+            <span className="text-xs text-muted-foreground/80">
+              {overlapPct <= 8
+                ? 'Clean loop — different roads back'
+                : overlapPct <= 25
+                  ? 'Mostly separate return route'
+                  : `${overlapPct}% shared with outbound`}
+            </span>
+          ) : null}
+          {!returnLeg && chosen.elevation && (
             <>
               <span className="inline-flex items-center gap-1.5 tabular-nums">
                 <Mountain className="size-4 shrink-0" aria-hidden />
@@ -88,6 +121,34 @@ export function RouteSummary({ chosen, direct }: Props) {
           )}
         </div>
       </div>
+
+      {onFindReturn ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={returnLeg ? 'secondary' : 'outline'}
+            disabled={returnLoading}
+            onClick={onFindReturn}
+          >
+            {returnLoading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <RotateCcw className="size-4" aria-hidden />
+            )}
+            {returnLoading
+              ? 'Finding return…'
+              : returnLeg
+                ? 'Try another return'
+                : 'Find loop return'}
+          </Button>
+          {returnLeg && onClearReturn ? (
+            <Button type="button" size="sm" variant="ghost" onClick={onClearReturn}>
+              Outbound only
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-3 gap-4">
         <Meter

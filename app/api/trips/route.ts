@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db'
 import { claimedTiles, trips } from '@/lib/db/schema'
 import { requireUser } from '@/lib/auth'
 import { dbErrorResponse } from '@/lib/db/errors'
+import { parseRouteCoords } from '@/lib/past-paths'
 import { tripToSummary } from '@/lib/trips'
 
 export const dynamic = 'force-dynamic'
@@ -41,6 +42,7 @@ type Body = {
   distanceM?: number
   durationS?: number
   tileKeys?: string[]
+  routeCoords?: unknown
 }
 
 export async function POST(req: Request) {
@@ -61,6 +63,7 @@ export async function POST(req: Request) {
       distanceM,
       durationS,
       tileKeys = [],
+      routeCoords: rawRouteCoords,
     } = body
 
     if (
@@ -79,6 +82,13 @@ export async function POST(req: Request) {
     const validTiles = tileKeys.filter(
       (k) => typeof k === 'string' && /^\d+:\d+$/.test(k),
     )
+    const routeCoords = parseRouteCoords(rawRouteCoords) ?? [
+      [startLat, startLng],
+      [endLat, endLng],
+    ]
+    if (routeCoords.length > 20_000) {
+      return NextResponse.json({ error: 'Route too long to store' }, { status: 400 })
+    }
 
     const db = getDb()
     let tilesAdded: string[] = []
@@ -110,6 +120,7 @@ export async function POST(req: Request) {
         distanceM: Math.round(distanceM),
         durationS: Math.round(durationS),
         tilesAdded,
+        routeCoords,
       })
       .returning()
 

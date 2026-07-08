@@ -1,5 +1,6 @@
 import {
   doublePrecision,
+  json,
   integer,
   pgSequence,
   pgTable,
@@ -50,6 +51,10 @@ export const trips = pgTable('trips', {
   distanceM: integer('distance_m').notNull(),
   durationS: integer('duration_s').notNull(),
   tilesAdded: text('tiles_added').array().notNull().default([]),
+  routeCoords: json('route_coords')
+    .$type<[number, number][]>()
+    .notNull()
+    .default([]),
   drivenAt: timestamp('driven_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

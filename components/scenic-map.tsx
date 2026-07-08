@@ -1,19 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   MapContainer,
   TileLayer,
   Polyline,
-  Rectangle,
   Circle,
   useMap,
   useMapEvents,
 } from 'react-leaflet'
 import type { LatLng, RouteCandidate } from '@/lib/types'
 import type { Map as LeafletMap } from 'leaflet'
-import { WARSAW_BBOX, WARSAW_CENTER, tileBounds, TILE_SIZE } from '@/lib/geo'
+import { WARSAW_BBOX, WARSAW_CENTER, TILE_SIZE } from '@/lib/geo'
+import type { PastPath } from '@/lib/past-paths'
+import { joinLoopCoords } from '@/lib/route-overlap'
 import { AlternateRoutesLayer, type AlternateRoute } from '@/components/alternate-routes-layer'
+import { PastPathsLayer } from '@/components/past-paths-layer'
 import { TurnMarkersLayer } from '@/components/turn-markers-layer'
 import { RouteEndpointMarkers } from '@/components/route-endpoint-markers'
 import { UserLocationMarker } from '@/components/user-location-marker'
@@ -27,6 +29,7 @@ const MAP_COLORS = {
     gridFill: 0.28,
     gridLine: 0.14,
     chosen: '#ec4899',
+    returnLeg: '#0d9488',
     alternates: ['#5b21b6', '#7c3aed', '#9333ea', '#a855f7'],
     directRed: '#dc2626',
     directOrange: '#f97316',
@@ -41,6 +44,7 @@ const MAP_COLORS = {
     gridFill: 0.35,
     gridLine: 0.18,
     chosen: '#f472b6',
+    returnLeg: '#2dd4bf',
     alternates: ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed'],
     directRed: '#f87171',
     directOrange: '#fb923c',
@@ -78,6 +82,8 @@ type Props = {
   onUseLocationAsStart?: () => void
   alternateRoutes?: AlternateRoute[]
   onSelectRoute?: (index: number) => void
+  pastPaths?: PastPath[]
+  returnRoute?: RouteCandidate | null
 }
 
 const ROTATABLE_PANES = [
@@ -90,6 +96,9 @@ const ROTATABLE_PANES = [
 
 const FIXED_NORTH_PANE = 'fixedNorthPane'
 
+/** Gap around each grid cell — cells are drawn square and slightly inset. */
+const GRID_CELL_INSET = 0.07
+
 // One controller keeps the map sized to its container and frames the chosen
 // route. Everything runs through a single rAF-guarded routine so invalidateSize
 // never fires synchronously inside the ResizeObserver callback (that synchronous
@@ -97,20 +106,34 @@ const FIXED_NORTH_PANE = 'fixedNorthPane'
 // notifications" error).
 function MapController({
   chosen,
+  returnRoute,
   headingUp,
   followingUser,
 }: {
   chosen: RouteCandidate | null
+  returnRoute: RouteCandidate | null
   headingUp: boolean
   followingUser: boolean
 }) {
   const map = useMap()
   const chosenRef = useRef(chosen)
   chosenRef.current = chosen
+  const returnRef = useRef(returnRoute)
+  returnRef.current = returnRoute
   const headingUpRef = useRef(headingUp)
   headingUpRef.current = headingUp
   const followingUserRef = useRef(followingUser)
   followingUserRef.current = followingUser
+
+  const fitCoords = useCallback((): [number, number][] | null => {
+    const outbound = chosenRef.current
+    if (!outbound?.coords.length) return null
+    const inbound = returnRef.current
+    if (inbound?.coords.length) {
+      return joinLoopCoords(outbound.coords, inbound.coords)
+    }
+    return outbound.coords
+  }, [])
 
   useEffect(() => {
     const container = map.getContainer()
@@ -121,9 +144,9 @@ function MapController({
       frame = requestAnimationFrame(() => {
         map.invalidateSize({ animate: false })
         if (headingUpRef.current || followingUserRef.current) return
-        const route = chosenRef.current
-        if (route && route.coords.length) {
-          map.fitBounds(route.coords as [number, number][], {
+        const coords = fitCoords()
+        if (coords?.length) {
+          map.fitBounds(coords, {
             padding: [56, 56],
             animate: false,
           })
@@ -140,19 +163,20 @@ function MapController({
       cancelAnimationFrame(frame)
       window.removeEventListener('resize', sync)
     }
-  }, [map])
+  }, [map, fitCoords])
 
   // Re-frame whenever the chosen route changes (skip while locked to heading or user).
   useEffect(() => {
     if (headingUp || followingUser) return
-    if (chosen && chosen.coords.length) {
+    const coords = fitCoords()
+    if (coords?.length) {
       map.invalidateSize({ animate: false })
-      map.fitBounds(chosen.coords as [number, number][], {
+      map.fitBounds(coords, {
         padding: [56, 56],
         animate: true,
       })
     }
-  }, [chosen, map, headingUp, followingUser])
+  }, [chosen, returnRoute, map, headingUp, followingUser, fitCoords])
 
   return null
 }
@@ -324,12 +348,18 @@ function SquareGridLayer({
   visible,
   color,
   lineOpacity,
+  coveredKeys,
+  uncapturedFillOpacity,
 }: {
   visible: boolean
   color: string
   lineOpacity: number
+  coveredKeys: string[]
+  uncapturedFillOpacity: number
 }) {
   const map = useMap()
+  const coveredRef = useRef(coveredKeys)
+  coveredRef.current = coveredKeys
 
   useEffect(() => {
     if (!visible) return
@@ -342,15 +372,46 @@ function SquareGridLayer({
       'leaflet-coverage-grid pointer-events-none absolute left-0 top-0'
     pane.appendChild(canvas)
 
-    const strokeSegment = (
+    const drawCell = (
       ctx: CanvasRenderingContext2D,
-      a: { x: number; y: number },
-      b: { x: number; y: number },
+      tx: number,
+      ty: number,
+      covered: Set<string>,
     ) => {
-      ctx.beginPath()
-      ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
-      ctx.stroke()
+      const south = WARSAW_BBOX.south + ty * TILE_SIZE
+      const north = south + TILE_SIZE
+      const west = WARSAW_BBOX.west + tx * TILE_SIZE
+      const east = west + TILE_SIZE
+
+      const nw = map.latLngToContainerPoint([north, west])
+      const ne = map.latLngToContainerPoint([north, east])
+      const sw = map.latLngToContainerPoint([south, west])
+      const se = map.latLngToContainerPoint([south, east])
+
+      const minX = Math.min(nw.x, ne.x, sw.x, se.x)
+      const maxX = Math.max(nw.x, ne.x, sw.x, se.x)
+      const minY = Math.min(nw.y, ne.y, sw.y, se.y)
+      const maxY = Math.max(nw.y, ne.y, sw.y, se.y)
+
+      const w = maxX - minX
+      const h = maxY - minY
+      if (w < 0.5 || h < 0.5) return
+
+      const side = Math.min(w, h) * (1 - GRID_CELL_INSET * 2)
+      const x = (minX + maxX) / 2 - side / 2
+      const y = (minY + maxY) / 2 - side / 2
+
+      const key = `${tx}:${ty}`
+      if (!covered.has(key)) {
+        ctx.globalAlpha = uncapturedFillOpacity
+        ctx.fillStyle = color
+        ctx.fillRect(x, y, side, side)
+      }
+
+      ctx.globalAlpha = lineOpacity
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1
+      ctx.strokeRect(x + 0.5, y + 0.5, side - 1, side - 1)
     }
 
     const redraw = () => {
@@ -366,9 +427,6 @@ function SquareGridLayer({
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, size.x, size.y)
-      ctx.strokeStyle = color
-      ctx.globalAlpha = lineOpacity
-      ctx.lineWidth = 1
 
       const view = map.getBounds()
       const south = Math.max(view.getSouth(), WARSAW_BBOX.south)
@@ -377,36 +435,19 @@ function SquareGridLayer({
       const east = Math.min(view.getEast(), WARSAW_BBOX.east)
       if (south >= north || west >= east) return
 
+      const covered = new Set(coveredRef.current)
       const tyStart = Math.floor((south - WARSAW_BBOX.south) / TILE_SIZE)
       const tyEnd = Math.ceil((north - WARSAW_BBOX.south) / TILE_SIZE)
+      const txStart = Math.floor((west - WARSAW_BBOX.west) / TILE_SIZE)
+      const txEnd = Math.ceil((east - WARSAW_BBOX.west) / TILE_SIZE)
 
       for (let ty = tyStart; ty <= tyEnd; ty++) {
         const rowSouth = WARSAW_BBOX.south + ty * TILE_SIZE
         const rowNorth = rowSouth + TILE_SIZE
         if (rowNorth < south || rowSouth > north) continue
 
-        const txStart = Math.floor((west - WARSAW_BBOX.west) / TILE_SIZE)
-        const txEnd = Math.ceil((east - WARSAW_BBOX.west) / TILE_SIZE)
-
-        for (const lat of [rowSouth, rowNorth]) {
-          if (lat < south - 1e-9 || lat > north + 1e-9) continue
-          const p1 = map.latLngToContainerPoint([lat, west])
-          const p2 = map.latLngToContainerPoint([lat, east])
-          strokeSegment(ctx, p1, p2)
-        }
-
         for (let tx = txStart; tx <= txEnd; tx++) {
-          const lngWest = WARSAW_BBOX.west + tx * TILE_SIZE
-          const lngEast = lngWest + TILE_SIZE
-          const latMin = Math.max(rowSouth, south)
-          const latMax = Math.min(rowNorth, north)
-
-          for (const lng of [lngWest, lngEast]) {
-            if (lng < west - 1e-9 || lng > east + 1e-9) continue
-            const p1 = map.latLngToContainerPoint([latMin, lng])
-            const p2 = map.latLngToContainerPoint([latMax, lng])
-            strokeSegment(ctx, p1, p2)
-          }
+          drawCell(ctx, tx, ty, covered)
         }
       }
     }
@@ -418,7 +459,7 @@ function SquareGridLayer({
       map.off('move zoom resize viewreset', redraw)
       canvas.remove()
     }
-  }, [map, visible, color, lineOpacity])
+  }, [map, visible, color, lineOpacity, uncapturedFillOpacity, coveredKeys])
 
   return null
 }
@@ -444,6 +485,8 @@ export default function ScenicMap({
   onUseLocationAsStart,
   alternateRoutes = [],
   onSelectRoute,
+  pastPaths = [],
+  returnRoute = null,
 }: Props) {
   const { resolvedTheme } = useTheme()
   const C = MAP_COLORS[resolvedTheme]
@@ -473,6 +516,7 @@ export default function ScenicMap({
       />
       <MapController
         chosen={chosen}
+        returnRoute={returnRoute}
         headingUp={headingUp && Boolean(chosen)}
         followingUser={followingUserLocation}
       />
@@ -489,31 +533,18 @@ export default function ScenicMap({
         anchor={headingAnchor}
       />
 
-      {/* Coverage grid (north-up) + filled cells */}
+      {/* Coverage grid — captured tiles stay clear, unexplored tiles are shaded */}
       {showCoverage && (
-        <>
-          <SquareGridLayer
-            visible
-            color={tileColor}
-            lineOpacity={C.gridLine}
-          />
-          {coveredTiles.map((key) => (
-            <Rectangle
-              key={key}
-              bounds={tileBounds(key)}
-              pane={FIXED_NORTH_PANE}
-              pathOptions={{
-                color: tileColor,
-                weight: 0.5,
-                opacity: 1,
-                fillColor: tileColor,
-                fillOpacity: C.gridFill,
-              }}
-              interactive={false}
-            />
-          ))}
-        </>
+        <SquareGridLayer
+          visible
+          color={tileColor}
+          lineOpacity={C.gridLine}
+          coveredKeys={coveredTiles}
+          uncapturedFillOpacity={C.gridFill}
+        />
       )}
+
+      <PastPathsLayer paths={pastPaths} theme={resolvedTheme} />
 
       {/* Alternate routes — purple, hover for details, click to select */}
       {direct && onSelectRoute && themedAlternates.length > 0 && (
@@ -561,6 +592,21 @@ export default function ScenicMap({
             color: C.chosen,
             weight: 7,
             opacity: 0.95,
+            lineJoin: 'round',
+            lineCap: 'round',
+          }}
+        />
+      )}
+
+      {/* Return leg — teal dashed loop back to start */}
+      {returnRoute && (
+        <Polyline
+          positions={returnRoute.coords}
+          pathOptions={{
+            color: C.returnLeg,
+            weight: 6,
+            opacity: 0.88,
+            dashArray: '10 6',
             lineJoin: 'round',
             lineCap: 'round',
           }}

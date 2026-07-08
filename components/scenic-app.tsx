@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { LatLng, RouteResponse, ScenicWeights } from '@/lib/types'
-import { PLACES, DEFAULT_WEIGHTS, pickScenic } from '@/lib/scenic'
+import { PLACES, DEFAULT_WEIGHTS, pickScenic, pickReturnRoute, rankReturnCandidates } from '@/lib/scenic'
 import type { RouteEndpoint } from '@/lib/places'
 import {
   endpointsEqual,
@@ -12,6 +12,9 @@ import {
   mapPickEndpoint,
 } from '@/lib/places'
 import { tilesForPath } from '@/lib/geo'
+import type { PastPath } from '@/lib/past-paths'
+import { tripToPastPath } from '@/lib/past-paths'
+import { joinLoopCoords } from '@/lib/route-overlap'
 import {
   buildDirectionSteps,
   distanceToStep,
@@ -49,17 +52,21 @@ function defaultEnd(): RouteEndpoint {
 }
 
 export function ScenicApp() {
-  const { user, claimedTiles, refresh } = useAuth()
+  const { user, claimedTiles, trips, refresh } = useAuth()
   const [start, setStart] = useState<RouteEndpoint>(defaultStart)
   const [end, setEnd] = useState<RouteEndpoint>(defaultEnd)
   const [weights, setWeights] = useState<ScenicWeights>(DEFAULT_WEIGHTS)
   const [budget, setBudget] = useState(20)
 
   const [data, setData] = useState<RouteResponse | null>(null)
+  const [returnData, setReturnData] = useState<RouteResponse | null>(null)
+  const [returnLoading, setReturnLoading] = useState(false)
+  const [returnError, setReturnError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [localCoverage, setLocalCoverage] = useState<Set<string>>(new Set())
+  const [localPastPaths, setLocalPastPaths] = useState<PastPath[]>([])
   const coverage = useMemo(() => {
     if (user) return new Set(claimedTiles)
     return localCoverage
@@ -133,6 +140,8 @@ export function ScenicApp() {
     let cancelled = false
     setLoading(true)
     setError(null)
+    setReturnData(null)
+    setReturnError(null)
     fetch('/api/route', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -161,12 +170,33 @@ export function ScenicApp() {
 
   useEffect(() => {
     setManualChosenIndex(null)
+    setReturnData(null)
+    setReturnError(null)
   }, [data])
 
-  const chosenIndex = manualChosenIndex ?? autoChosenIndex
+  const [manualReturnIndex, setManualReturnIndex] = useState<number | null>(null)
 
+  useEffect(() => {
+    setManualReturnIndex(null)
+  }, [returnData])
+
+  const chosenIndex = manualChosenIndex ?? autoChosenIndex
   const chosen = data ? data.candidates[chosenIndex] : null
   const direct = data ? data.candidates[data.directIndex] : null
+
+  const autoReturnIndex = useMemo(() => {
+    if (!returnData || !chosen) return 0
+    return pickReturnRoute(
+      returnData.candidates,
+      returnData.directIndex,
+      weights,
+      budget,
+      chosen.coords,
+    )
+  }, [returnData, chosen, weights, budget])
+
+  const returnIndex = manualReturnIndex ?? autoReturnIndex
+  const returnLeg = returnData ? returnData.candidates[returnIndex] ?? null : null
 
   const alternateRoutes = useMemo(() => {
     if (!data || !direct) return []
@@ -177,6 +207,19 @@ export function ScenicApp() {
       )
       .map(({ candidate, index }) => ({ candidate, index }))
   }, [data, direct, chosenIndex])
+
+  const pastPaths = useMemo(() => {
+    const paths: PastPath[] = user
+      ? trips
+          .map((trip) => tripToPastPath(trip))
+          .filter((path): path is PastPath => path !== null)
+      : localPastPaths
+
+    return paths.sort(
+      (a, b) =>
+        new Date(a.drivenAt).getTime() - new Date(b.drivenAt).getTime(),
+    )
+  }, [user, trips, localPastPaths])
 
   const handleSelectRoute = useCallback((index: number) => {
     setManualChosenIndex(index)
@@ -219,6 +262,73 @@ export function ScenicApp() {
       setHeadingUp(false)
     }
   }, [chosen])
+
+  useEffect(() => {
+    setReturnData(null)
+    setReturnError(null)
+    setManualReturnIndex(null)
+  }, [chosen?.id])
+
+  const handleFindReturn = useCallback(async () => {
+    if (!chosen) return
+    setReturnError(null)
+
+    if (returnData) {
+      const ranked = rankReturnCandidates(
+        returnData.candidates,
+        returnData.directIndex,
+        weights,
+        budget,
+        chosen.coords,
+      )
+      const currentRank = ranked.indexOf(returnIndex)
+      const nextIndex =
+        ranked[(currentRank + 1) % ranked.length] ?? ranked[0] ?? returnIndex
+      setManualReturnIndex(nextIndex)
+      return
+    }
+
+    setReturnLoading(true)
+    try {
+      const res = await fetch('/api/route', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          start: end.point,
+          end: start.point,
+          avoidPath: chosen.coords,
+        }),
+      })
+      const payload = (await res.json()) as RouteResponse
+      if (!res.ok || 'error' in (payload as { error?: string })) {
+        throw new Error(
+          (payload as { error?: string }).error ?? 'Could not find a return route',
+        )
+      }
+      setReturnData(payload)
+      setManualReturnIndex(null)
+    } catch (e) {
+      setReturnError(
+        e instanceof Error ? e.message : 'Could not find a return route',
+      )
+    } finally {
+      setReturnLoading(false)
+    }
+  }, [
+    chosen,
+    returnData,
+    returnIndex,
+    end.point,
+    start.point,
+    weights,
+    budget,
+  ])
+
+  const handleClearReturn = useCallback(() => {
+    setReturnData(null)
+    setReturnError(null)
+    setManualReturnIndex(null)
+  }, [])
 
   const handleSwap = useCallback(() => {
     setStartManual(end)
@@ -280,7 +390,10 @@ export function ScenicApp() {
 
   const handleAddRoute = useCallback(async () => {
     if (!chosen) return
-    const tiles = [...tilesForPath(chosen.coords)]
+    const loopCoords = returnLeg
+      ? joinLoopCoords(chosen.coords, returnLeg.coords)
+      : chosen.coords
+    const tiles = [...tilesForPath(loopCoords)]
     setSaveError(null)
 
     if (user) {
@@ -296,9 +409,14 @@ export function ScenicApp() {
             endName: end.name,
             endLat: end.point.lat,
             endLng: end.point.lng,
-            distanceM: chosen.distance,
-            durationS: chosen.duration,
+            distanceM: returnLeg
+              ? chosen.distance + returnLeg.distance
+              : chosen.distance,
+            durationS: returnLeg
+              ? chosen.duration + returnLeg.duration
+              : chosen.duration,
             tileKeys: tiles,
+            routeCoords: loopCoords,
           }),
         })
         const data = await res.json()
@@ -309,6 +427,14 @@ export function ScenicApp() {
         setSaveError(e instanceof Error ? e.message : 'Could not save drive')
       }
     } else {
+      setLocalPastPaths((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          coords: loopCoords,
+          drivenAt: new Date().toISOString(),
+        },
+      ])
       setLocalCoverage((prev) => {
         const next = new Set(prev)
         let added = 0
@@ -323,7 +449,7 @@ export function ScenicApp() {
       })
     }
     setShowCoverage(true)
-  }, [chosen, user, start, end, refresh])
+  }, [chosen, returnLeg, user, start, end, refresh])
 
   const handleResetCoverage = useCallback(async () => {
     setSaveError(null)
@@ -407,7 +533,21 @@ export function ScenicApp() {
           ) : error ? (
             <p className="text-sm text-destructive">{error}</p>
           ) : chosen && direct ? (
-            <RouteSummary chosen={chosen} direct={direct} />
+            <>
+              <RouteSummary
+                chosen={chosen}
+                direct={direct}
+                returnLeg={returnLeg}
+                onFindReturn={handleFindReturn}
+                onClearReturn={handleClearReturn}
+                returnLoading={returnLoading}
+              />
+              {returnError ? (
+                <p className="mt-2 text-sm text-destructive" role="alert">
+                  {returnError}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
 
@@ -488,6 +628,8 @@ export function ScenicApp() {
           }
           alternateRoutes={alternateRoutes}
           onSelectRoute={handleSelectRoute}
+          pastPaths={pastPaths}
+          returnRoute={returnLeg}
         />
         <DirectionsPanel
           open={directionsOpen}

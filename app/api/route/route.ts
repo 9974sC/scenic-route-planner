@@ -14,14 +14,20 @@ import {
   inferTurnMarkersFromCoords,
   type GraphHopperInstruction,
 } from '@/lib/turn-markers'
+import { outboundBulgeSide } from '@/lib/route-overlap'
 import type { TurnMarker } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-type Body = { start: LatLng; end: LatLng }
+type Body = {
+  start: LatLng
+  end: LatLng
+  avoidPath?: [number, number][]
+}
 
 export async function POST(req: Request) {
-  const { start, end } = (await req.json()) as Body
+  const body = (await req.json()) as Body
+  const { start, end, avoidPath } = body
   if (!start || !end) {
     return NextResponse.json({ error: 'start and end required' }, { status: 400 })
   }
@@ -36,7 +42,7 @@ export async function POST(req: Request) {
     console.log('[v0] GraphHopper failed, using simulated routes:', (err as Error).message)
   }
 
-  return NextResponse.json(simulate(start, end))
+  return NextResponse.json(simulate(start, end, avoidPath))
 }
 
 async function fetchGraphHopper(
@@ -52,9 +58,9 @@ async function fetchGraphHopper(
   url.searchParams.set('elevation', 'true')
   url.searchParams.set('instructions', 'true')
   url.searchParams.set('algorithm', 'alternative_route')
-  url.searchParams.set('alternative_route.max_paths', '4')
-  url.searchParams.set('alternative_route.max_weight_factor', '1.8')
-  url.searchParams.set('alternative_route.max_share_factor', '0.8')
+  url.searchParams.set('alternative_route.max_paths', '6')
+  url.searchParams.set('alternative_route.max_weight_factor', '5')
+  url.searchParams.set('alternative_route.max_share_factor', '0.35')
   url.searchParams.set('key', key)
 
   const res = await fetch(url.toString(), { cache: 'no-store' })
@@ -80,22 +86,40 @@ async function fetchGraphHopper(
 }
 
 /** Build several plausible routes with varying waviness when no API key. */
-function simulate(start: LatLng, end: LatLng): RouteResponse {
-  const straight = buildPath(start, end, 0, 0)
+function simulate(
+  start: LatLng,
+  end: LatLng,
+  avoidPath?: [number, number][],
+): RouteResponse {
+  const straight = buildPath(start, end, 0, 0, 1)
   const directDist = pathLength(straight)
   // ~40 km/h average city speed
   const speed = 40000 / 3600
 
-  const variants: { id: string; wobble: number; detour: number; phase: number }[] = [
-    { id: 'direct', wobble: 0.15, detour: 1.0, phase: 0 },
-    { id: 'green', wobble: 1.0, detour: 1.28, phase: 1.3 },
-    { id: 'scenic', wobble: 1.5, detour: 1.42, phase: 2.4 },
-    { id: 'river', wobble: 0.8, detour: 1.18, phase: 4.1 },
+  const returnSide =
+    avoidPath && avoidPath.length > 2
+      ? -outboundBulgeSide(start, end, avoidPath)
+      : 1
+
+  const variants: {
+    id: string
+    wobble: number
+    detour: number
+    phase: number
+    side: number
+  }[] = [
+    { id: 'direct', wobble: 0.12, detour: 1.0, phase: 0, side: returnSide },
+    { id: 'river', wobble: 0.85, detour: 1.24, phase: 4.1 + Math.PI * 0.15, side: returnSide },
+    { id: 'green', wobble: 1.15, detour: 1.42, phase: 1.3 + Math.PI * 0.2, side: returnSide },
+    { id: 'scenic', wobble: 1.65, detour: 1.72, phase: 2.4 + Math.PI * 0.25, side: returnSide },
+    { id: 'wild', wobble: 2.0, detour: 2.35, phase: 0.9 + Math.PI * 0.3, side: returnSide },
+    { id: 'epic', wobble: 2.35, detour: 3.2, phase: 3.8 + Math.PI * 0.35, side: returnSide },
+    { id: 'grand', wobble: 2.6, detour: 4.25, phase: 5.2 + Math.PI * 0.4, side: returnSide },
   ]
 
   const candidates = variants.map((v) => {
-    const coords = buildPath(start, end, v.wobble, v.phase)
-    const dist = directDist * v.detour * (0.97 + hash01(v.id) * 0.06)
+    const coords = buildPath(start, end, v.wobble, v.phase, v.side)
+    const dist = directDist * v.detour * (0.94 + hash01(v.id) * 0.14)
     const dur = dist / speed
     const elevations = simulatedElevations(coords, v.id)
     const turnMarkers = inferTurnMarkersFromCoords(coords)
@@ -112,6 +136,7 @@ function buildPath(
   end: LatLng,
   wobble: number,
   phase: number,
+  side = 1,
 ): [number, number][] {
   const n = 60
   const dLat = end.lat - start.lat
@@ -120,7 +145,7 @@ function buildPath(
   const perpLat = -dLng
   const perpLng = dLat
   const len = Math.hypot(perpLat, perpLng) || 1
-  const amp = 0.02 * wobble
+  const amp = 0.028 * wobble
   const coords: [number, number][] = []
   for (let i = 0; i <= n; i++) {
     const t = i / n
@@ -129,7 +154,7 @@ function buildPath(
     const wave =
       Math.sin(t * Math.PI * 2.4 + phase) * 0.7 +
       Math.sin(t * Math.PI * 5.1 + phase * 1.7) * 0.3
-    const off = amp * taper * wave
+    const off = amp * taper * wave * side
     const lat = start.lat + dLat * t + (perpLat / len) * off
     const lng = start.lng + dLng * t + (perpLng / len) * off
     coords.push([lat, lng])
