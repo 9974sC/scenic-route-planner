@@ -174,6 +174,15 @@
   z-index: 450;
 }
 
+.leaflet-tooltip.route-preview-tooltip {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--popover) 96%, transparent);
+  color: var(--popover-foreground);
+  box-shadow: 0 4px 12px oklch(0 0 0 / 12%);
+}
+
 /* Turn direction markers on the route */
 .turn-marker-leaflet-icon {
   background: transparent;
@@ -210,4 +219,57 @@
   justify-content: center;
   border-radius: 9999px;
   pointer-events: auto;
+}
+
+/* Live user location */
+.user-location-leaflet-icon {
+  background: transparent;
+  border: none;
+}
+.user-location-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-location-dot {
+  position: relative;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.user-location-pulse {
+  position: absolute;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: rgba(37, 99, 235, 0.35);
+  animation: user-location-pulse 2s ease-out infinite;
+}
+.user-location-marker--active .user-location-dot {
+  background: #16a34a;
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.25);
+}
+.user-location-marker--active .user-location-pulse {
+  background: rgba(22, 163, 74, 0.35);
+}
+@keyframes user-location-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
 }

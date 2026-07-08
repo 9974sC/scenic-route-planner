@@ -1,11 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { LatLng, RouteResponse, ScenicWeights } from '@/lib/types'
 import { PLACES, DEFAULT_WEIGHTS, pickScenic } from '@/lib/scenic'
 import type { RouteEndpoint } from '@/lib/places'
-import { endpointsEqual, mapPickEndpoint } from '@/lib/places'
+import {
+  endpointsEqual,
+  isLocationEndpoint,
+  locationEndpoint,
+  mapPickEndpoint,
+} from '@/lib/places'
 import { tilesForPath } from '@/lib/geo'
 import {
   buildDirectionSteps,
@@ -69,18 +74,41 @@ export function ScenicApp() {
   const [headingUp, setHeadingUp] = useState(false)
   const [userPosition, setUserPosition] = useState<LatLng | null>(null)
   const [geoAvailable, setGeoAvailable] = useState(false)
+  const startTouchedRef = useRef(false)
+  const geoDefaultAppliedRef = useRef(false)
+
+  const setStartManual = useCallback((endpoint: RouteEndpoint) => {
+    startTouchedRef.current = true
+    setStart(endpoint)
+  }, [])
 
   useEffect(() => {
     if (!navigator.geolocation) return
-    setGeoAvailable(true)
+
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        setUserPosition({
+        const point: LatLng = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
+        }
+        setUserPosition(point)
+        setGeoAvailable(true)
+
+        setStart((current) => {
+          if (isLocationEndpoint(current)) {
+            return locationEndpoint(point)
+          }
+          if (!startTouchedRef.current && !geoDefaultAppliedRef.current) {
+            geoDefaultAppliedRef.current = true
+            return locationEndpoint(point)
+          }
+          return current
         })
       },
-      () => setUserPosition(null),
+      () => {
+        setUserPosition(null)
+        setGeoAvailable(false)
+      },
       { enableHighAccuracy: true, maximumAge: 15_000, timeout: 10_000 },
     )
     return () => navigator.geolocation.clearWatch(watchId)
@@ -114,16 +142,35 @@ export function ScenicApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end])
 
-  const chosenIndex = useMemo(() => {
+  const autoChosenIndex = useMemo(() => {
     if (!data) return 0
     return pickScenic(data.candidates, data.directIndex, weights, budget)
   }, [data, weights, budget])
 
+  const [manualChosenIndex, setManualChosenIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    setManualChosenIndex(null)
+  }, [data])
+
+  const chosenIndex = manualChosenIndex ?? autoChosenIndex
+
   const chosen = data ? data.candidates[chosenIndex] : null
   const direct = data ? data.candidates[data.directIndex] : null
-  const alternates = data
-    ? data.candidates.filter((_, i) => i !== chosenIndex && i !== data.directIndex)
-    : []
+
+  const alternateRoutes = useMemo(() => {
+    if (!data || !direct) return []
+    return data.candidates
+      .map((candidate, index) => ({ candidate, index }))
+      .filter(
+        ({ index }) => index !== chosenIndex && index !== data.directIndex,
+      )
+      .map(({ candidate, index }) => ({ candidate, index }))
+  }, [data, direct, chosenIndex])
+
+  const handleSelectRoute = useCallback((index: number) => {
+    setManualChosenIndex(index)
+  }, [])
 
   const directionSteps = useMemo(() => {
     if (!chosen?.turnMarkers?.length) return []
@@ -164,23 +211,28 @@ export function ScenicApp() {
   }, [chosen])
 
   const handleSwap = useCallback(() => {
-    setStart(end)
+    setStartManual(end)
     setEnd(start)
-  }, [start, end])
+  }, [start, end, setStartManual])
 
   const handleMapPickRequest = useCallback((target: 'start' | 'end') => {
     setMapPickTarget((current) => (current === target ? null : target))
   }, [])
 
+  const handleUseLocationAsStart = useCallback(() => {
+    if (!userPosition) return
+    setStartManual(locationEndpoint(userPosition))
+  }, [userPosition, setStartManual])
+
   const handleMapPick = useCallback(
     (point: { lat: number; lng: number }) => {
       if (!mapPickTarget) return
       const picked = mapPickEndpoint(point)
-      if (mapPickTarget === 'start') setStart(picked)
+      if (mapPickTarget === 'start') setStartManual(picked)
       else setEnd(picked)
       setMapPickTarget(null)
     },
-    [mapPickTarget],
+    [mapPickTarget, setStartManual],
   )
 
   const handleAddRoute = useCallback(async () => {
@@ -282,14 +334,13 @@ export function ScenicApp() {
         </header>
 
         <UserBadge />
-        <AuthPanel />
 
         <ScenicControls
           start={start}
           end={end}
           weights={weights}
           budget={budget}
-          onStart={setStart}
+          onStart={setStartManual}
           onEnd={setEnd}
           onWeights={setWeights}
           onBudget={setBudget}
@@ -297,6 +348,7 @@ export function ScenicApp() {
           menuContainer={sidebarEl}
           mapPickTarget={mapPickTarget}
           onMapPickRequest={handleMapPickRequest}
+          userPosition={geoAvailable ? userPosition : null}
         />
 
         <div className="rounded-xl border border-border bg-card p-4">
@@ -325,6 +377,8 @@ export function ScenicApp() {
           justAdded={justAdded}
           signedIn={Boolean(user)}
         />
+
+        <AuthPanel />
 
         {saveError ? (
           <p className="text-sm text-destructive" role="alert">
@@ -362,7 +416,6 @@ export function ScenicApp() {
           end={end.point}
           chosen={chosen}
           direct={direct}
-          alternates={alternates}
           coverage={coverage}
           coverageColor={user?.colorHex}
           showCoverage={showCoverage}
@@ -371,6 +424,13 @@ export function ScenicApp() {
           headingUp={headingUp}
           travelBearing={travelBearing}
           headingAnchor={navigationPosition}
+          userPosition={geoAvailable ? userPosition : null}
+          startIsUserLocation={isLocationEndpoint(start)}
+          onUseLocationAsStart={
+            geoAvailable && userPosition ? handleUseLocationAsStart : undefined
+          }
+          alternateRoutes={alternateRoutes}
+          onSelectRoute={handleSelectRoute}
         />
         <DirectionsPanel
           open={directionsOpen}

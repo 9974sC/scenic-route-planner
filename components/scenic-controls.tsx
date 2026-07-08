@@ -1,6 +1,7 @@
 'use client'
 
 import type { ScenicWeights } from '@/lib/types'
+import type { LatLng } from '@/lib/types'
 import type { RouteEndpoint } from '@/lib/places'
 import { PlacePicker } from '@/components/place-picker'
 import { Slider } from '@/components/ui/slider'
@@ -20,6 +21,7 @@ type Props = {
   menuContainer?: HTMLElement | null
   mapPickTarget?: 'start' | 'end' | null
   onMapPickRequest?: (target: 'start' | 'end') => void
+  userPosition?: LatLng | null
 }
 
 function WeightSlider({
@@ -68,6 +70,7 @@ export function ScenicControls({
   menuContainer,
   mapPickTarget,
   onMapPickRequest,
+  userPosition = null,
 }: Props) {
   return (
     <div className="flex flex-col gap-2">
@@ -82,6 +85,7 @@ export function ScenicControls({
           onMapPickRequest={
             onMapPickRequest ? () => onMapPickRequest('start') : undefined
           }
+          userPosition={userPosition}
         />
 
         <div className="relative z-10 flex items-center py-0.5">

@@ -48,6 +48,8 @@ type Props = {
   finishColor?: string
   startBg?: string
   finishBg?: string
+  /** Hide green start pin when start is the live location marker */
+  hideStart?: boolean
 }
 
 export function RouteEndpointMarkers({
@@ -57,25 +59,28 @@ export function RouteEndpointMarkers({
   finishColor = '#ea580c',
   startBg = '#dcfce7',
   finishBg = '#ffedd5',
+  hideStart = false,
 }: Props) {
   return (
     <>
-      <Marker
-        position={[start.lat, start.lng]}
-        icon={endpointIcon(CircleDot, startColor, 'Start', startBg)}
-        zIndexOffset={650}
-        interactive
-      >
-        <Tooltip
-          direction="top"
-          offset={[0, -18]}
-          opacity={0.96}
-          sticky
-          className="turn-marker-tooltip"
+      {!hideStart ? (
+        <Marker
+          position={[start.lat, start.lng]}
+          icon={endpointIcon(CircleDot, startColor, 'Start', startBg)}
+          zIndexOffset={650}
+          interactive
         >
-          Start
-        </Tooltip>
-      </Marker>
+          <Tooltip
+            direction="top"
+            offset={[0, -18]}
+            opacity={0.96}
+            sticky
+            className="turn-marker-tooltip"
+          >
+            Start
+          </Tooltip>
+        </Marker>
+      ) : null}
       <Marker
         position={[end.lat, end.lng]}
         icon={endpointIcon(Flag, finishColor, 'Finish', finishBg)}

@@ -10,12 +10,15 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Loader2, MapPin } from 'lucide-react'
+import { ChevronDown, Loader2, MapPin, Navigation } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { RouteEndpoint } from '@/lib/places'
+import type { LatLng } from '@/lib/types'
 import {
   endpointsEqual,
   filterPresets,
+  isLocationEndpoint,
+  locationEndpoint,
   parseCoordinateQuery,
 } from '@/lib/places'
 import { cn } from '@/lib/utils'
@@ -28,6 +31,8 @@ type Props = {
   menuContainer?: HTMLElement | null
   mapPickActive?: boolean
   onMapPickRequest?: () => void
+  /** When set, show "Your location" as the first picker option */
+  userPosition?: LatLng | null
 }
 
 function usePopupStyle(
@@ -91,9 +96,15 @@ function ListOption({
             {item.hint}
           </span>
         </span>
-        {item.custom ? (
+        {item.custom && !isLocationEndpoint(item) ? (
           <MapPin
             className="size-3.5 shrink-0 text-muted-foreground/70"
+            aria-hidden
+          />
+        ) : null}
+        {isLocationEndpoint(item) ? (
+          <Navigation
+            className="size-3.5 shrink-0 text-sky-600 dark:text-sky-400"
             aria-hidden
           />
         ) : null}
@@ -110,6 +121,7 @@ export function PlacePicker({
   menuContainer,
   mapPickActive = false,
   onMapPickRequest,
+  userPosition = null,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -126,14 +138,26 @@ export function PlacePicker({
 
   const presets = useMemo(() => filterPresets(query), [query])
 
+  const locationOption = useMemo(
+    () => (userPosition ? locationEndpoint(userPosition) : null),
+    [userPosition],
+  )
+
   const items = useMemo(() => {
     const seen = new Set<string>()
-    return [...presets, ...remote].filter((item) => {
+    const merged = [...presets, ...remote].filter((item) => {
       if (seen.has(item.id)) return false
       seen.add(item.id)
       return true
     })
-  }, [presets, remote])
+    if (
+      locationOption &&
+      !merged.some((item) => isLocationEndpoint(item) || item.id === locationOption.id)
+    ) {
+      return [locationOption, ...merged]
+    }
+    return merged
+  }, [presets, remote, locationOption])
 
   const selectItem = useCallback(
     (item: RouteEndpoint) => {

@@ -60,3 +60,20 @@ export function mapPickEndpoint(point: LatLng): RouteEndpoint {
     point,
   )
 }
+
+export const LOCATION_ENDPOINT_ID = 'current-location'
+
+export function locationEndpoint(point: LatLng): RouteEndpoint {
+  return {
+    id: LOCATION_ENDPOINT_ID,
+    name: 'Your location',
+    hint: 'Live GPS position',
+    point,
+    custom: true,
+  }
+}
+
+export function isLocationEndpoint(endpoint: RouteEndpoint): boolean {
+  return endpoint.id === LOCATION_ENDPOINT_ID
+}
+

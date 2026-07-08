@@ -12,8 +12,10 @@ import {
 import type { LatLng, RouteCandidate } from '@/lib/types'
 import type { Map as LeafletMap } from 'leaflet'
 import { WARSAW_BBOX, WARSAW_CENTER, tileBounds, TILE_SIZE } from '@/lib/geo'
+import { AlternateRoutesLayer, type AlternateRoute } from '@/components/alternate-routes-layer'
 import { TurnMarkersLayer } from '@/components/turn-markers-layer'
 import { RouteEndpointMarkers } from '@/components/route-endpoint-markers'
+import { UserLocationMarker } from '@/components/user-location-marker'
 import { useTheme } from '@/components/theme-provider'
 
 // Leaflet writes SVG stroke attributes, so CSS vars won't resolve in pathOptions.
@@ -23,7 +25,7 @@ const MAP_COLORS = {
     bg: '#f8f7f0',
     gridFill: 0.28,
     gridLine: 0.14,
-    chosen: '#2563eb',
+    chosen: '#ec4899',
     alternates: ['#5b21b6', '#7c3aed', '#9333ea', '#a855f7'],
     directRed: '#dc2626',
     directOrange: '#f97316',
@@ -37,7 +39,7 @@ const MAP_COLORS = {
     bg: '#0f2119',
     gridFill: 0.35,
     gridLine: 0.18,
-    chosen: '#60a5fa',
+    chosen: '#f472b6',
     alternates: ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed'],
     directRed: '#f87171',
     directOrange: '#fb923c',
@@ -59,7 +61,6 @@ type Props = {
   end: LatLng
   chosen: RouteCandidate | null
   direct: RouteCandidate | null
-  alternates: RouteCandidate[]
   coverage: Set<string>
   coverageColor?: string
   showCoverage: boolean
@@ -68,6 +69,11 @@ type Props = {
   headingUp?: boolean
   travelBearing?: number
   headingAnchor?: LatLng | null
+  userPosition?: LatLng | null
+  startIsUserLocation?: boolean
+  onUseLocationAsStart?: () => void
+  alternateRoutes?: AlternateRoute[]
+  onSelectRoute?: (index: number) => void
 }
 
 const ROTATABLE_PANES = [
@@ -375,7 +381,6 @@ export default function ScenicMap({
   end,
   chosen,
   direct,
-  alternates,
   coverage,
   coverageColor,
   showCoverage,
@@ -384,11 +389,24 @@ export default function ScenicMap({
   headingUp = false,
   travelBearing = 0,
   headingAnchor = null,
+  userPosition = null,
+  startIsUserLocation = false,
+  onUseLocationAsStart,
+  alternateRoutes = [],
+  onSelectRoute,
 }: Props) {
   const { resolvedTheme } = useTheme()
   const C = MAP_COLORS[resolvedTheme]
   const tileColor = coverageColor ?? C.primary
   const coveredTiles = useMemo(() => Array.from(coverage), [coverage])
+  const themedAlternates = useMemo(
+    () =>
+      alternateRoutes.map((route, i) => ({
+        ...route,
+        color: C.alternates[i % C.alternates.length],
+      })),
+    [alternateRoutes, C.alternates],
+  )
 
   return (
     <MapContainer
@@ -438,20 +456,15 @@ export default function ScenicMap({
         </>
       )}
 
-      {/* Alternates — purple shades */}
-      {alternates.map((a, i) => (
-        <Polyline
-          key={a.id}
-          positions={a.coords}
-          pathOptions={{
-            color: C.alternates[i % C.alternates.length],
-            weight: 4,
-            opacity: 0.55,
-            lineJoin: 'round',
-            lineCap: 'round',
-          }}
+      {/* Alternate routes — purple, hover for details, click to select */}
+      {direct && onSelectRoute && themedAlternates.length > 0 && (
+        <AlternateRoutesLayer
+          routes={themedAlternates}
+          direct={direct}
+          mapPickActive={mapPickActive}
+          onSelect={onSelectRoute}
         />
-      ))}
+      )}
 
       {/* Direct / fastest route — red & orange dashed overlay */}
       {direct && chosen && direct.id !== chosen.id && (
@@ -481,7 +494,7 @@ export default function ScenicMap({
         </>
       )}
 
-      {/* Chosen scenic route — blue */}
+      {/* Selected route — pink */}
       {chosen && (
         <Polyline
           positions={chosen.coords}
@@ -507,7 +520,16 @@ export default function ScenicMap({
         finishColor={C.finish}
         startBg={C.startBg}
         finishBg={C.finishBg}
+        hideStart={startIsUserLocation && Boolean(userPosition)}
       />
+
+      {userPosition ? (
+        <UserLocationMarker
+          position={userPosition}
+          isStart={startIsUserLocation}
+          onSelectAsStart={onUseLocationAsStart}
+        />
+      ) : null}
     </MapContainer>
   )
 }
