@@ -106,7 +106,7 @@ export function RouteSummary({
             {fmtDuration(returnLeg && loopDuration ? loopDuration : chosenDuration)}
           </span>
           {returnLeg ? (
-            <span className="rounded-full bg-green-600/15 px-2.5 py-0.5 text-sm font-medium text-green-800 dark:text-green-300">
+            <span className="rounded-full bg-green-600/15 px-2.5 py-0.5 text-sm font-medium text-green-800 dark:bg-green-200/15 dark:text-green-200">
               Round trip
             </span>
           ) : isDirect ? (

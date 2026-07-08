@@ -257,7 +257,7 @@ export function ProfilePanel() {
                   className={cn(
                     'size-4 shrink-0',
                     stats.usageStreakDays > 0
-                      ? 'text-orange-500'
+                      ? 'text-orange-400 dark:text-orange-200'
                       : 'text-muted-foreground',
                   )}
                   aria-hidden

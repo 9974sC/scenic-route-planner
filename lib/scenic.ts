@@ -110,9 +110,9 @@ export function deltaTone(
 export function deltaToneClass(tone: 'more' | 'less' | 'same'): string {
   switch (tone) {
     case 'more':
-      return 'text-amber-700 dark:text-amber-400'
+      return 'text-amber-700 dark:text-amber-200'
     case 'less':
-      return 'text-green-700 dark:text-green-400'
+      return 'text-green-700 dark:text-green-200'
     default:
       return 'text-muted-foreground'
   }

@@ -15,11 +15,11 @@ type Props = {
 function wetnessColor(level: string): string {
   switch (level) {
     case 'soaked':
-      return 'text-sky-600 dark:text-sky-400'
+      return 'text-sky-600 dark:text-sky-300'
     case 'wet':
-      return 'text-blue-600 dark:text-blue-400'
+      return 'text-blue-600 dark:text-blue-300'
     case 'damp':
-      return 'text-amber-600 dark:text-amber-400'
+      return 'text-amber-600 dark:text-amber-200'
     default:
       return 'text-muted-foreground'
   }

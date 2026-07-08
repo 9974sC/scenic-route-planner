@@ -104,7 +104,7 @@ function ListOption({
         ) : null}
         {isLocationEndpoint(item) ? (
           <Navigation
-            className="size-3.5 shrink-0 text-sky-600 dark:text-sky-400"
+            className="size-3.5 shrink-0 text-sky-600 dark:text-sky-300"
             aria-hidden
           />
         ) : null}

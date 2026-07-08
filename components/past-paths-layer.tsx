@@ -7,7 +7,7 @@ import { opacityForPastPath } from '@/lib/past-paths'
 
 const PAST_PATH_COLOR = {
   light: '#64748b',
-  dark: '#94a3b8',
+  dark: '#c4d4cc',
 } as const
 
 type Props = {

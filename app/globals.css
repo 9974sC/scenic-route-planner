@@ -102,49 +102,49 @@
 .dark {
   color-scheme: dark;
 
-  /* Deep pine base with visible green cast */
-  --background: oklch(0.17 0.048 158);
-  --foreground: oklch(0.96 0.02 95);
-  --card: oklch(0.23 0.058 154);
-  --card-foreground: oklch(0.96 0.02 95);
-  --popover: oklch(0.25 0.062 153);
-  --popover-foreground: oklch(0.96 0.02 95);
+  /* Soft twilight sage — low chroma, lifted lightness */
+  --background: oklch(0.26 0.028 162);
+  --foreground: oklch(0.91 0.018 95);
+  --card: oklch(0.30 0.032 160);
+  --card-foreground: oklch(0.91 0.018 95);
+  --popover: oklch(0.32 0.034 158);
+  --popover-foreground: oklch(0.91 0.018 95);
 
-  /* Vivid emerald primary */
-  --primary: oklch(0.74 0.19 152);
-  --primary-foreground: oklch(0.16 0.05 158);
+  /* Pastel mint */
+  --primary: oklch(0.78 0.085 158);
+  --primary-foreground: oklch(0.24 0.038 162);
 
-  --secondary: oklch(0.32 0.07 148);
-  --secondary-foreground: oklch(0.94 0.025 95);
-  --muted: oklch(0.28 0.05 152);
-  --muted-foreground: oklch(0.78 0.05 135);
+  --secondary: oklch(0.36 0.038 155);
+  --secondary-foreground: oklch(0.88 0.02 95);
+  --muted: oklch(0.34 0.032 158);
+  --muted-foreground: oklch(0.72 0.038 140);
 
-  /* Warm amber accent */
-  --accent: oklch(0.82 0.17 65);
-  --accent-foreground: oklch(0.18 0.05 58);
+  /* Pastel peach */
+  --accent: oklch(0.80 0.085 58);
+  --accent-foreground: oklch(0.26 0.035 58);
 
-  /* Bright yellow for time / duration */
-  --time: oklch(0.88 0.19 98);
+  /* Pastel butter */
+  --time: oklch(0.84 0.10 96);
 
-  --destructive: oklch(0.72 0.22 25);
-  --border: oklch(0.62 0.1 150 / 32%);
-  --input: oklch(0.62 0.1 150 / 40%);
-  --ring: oklch(0.74 0.19 152);
+  --destructive: oklch(0.72 0.11 22);
+  --border: oklch(0.58 0.05 155 / 26%);
+  --input: oklch(0.58 0.05 155 / 32%);
+  --ring: oklch(0.78 0.085 158);
 
-  --chart-1: oklch(0.74 0.19 152);
-  --chart-2: oklch(0.82 0.17 65);
-  --chart-3: oklch(0.72 0.14 210);
-  --chart-4: oklch(0.78 0.14 130);
-  --chart-5: oklch(0.68 0.12 35);
+  --chart-1: oklch(0.78 0.085 158);
+  --chart-2: oklch(0.80 0.085 58);
+  --chart-3: oklch(0.76 0.075 215);
+  --chart-4: oklch(0.80 0.075 130);
+  --chart-5: oklch(0.74 0.065 35);
 
-  --sidebar: oklch(0.21 0.055 156);
-  --sidebar-foreground: oklch(0.96 0.02 95);
-  --sidebar-primary: oklch(0.74 0.19 152);
-  --sidebar-primary-foreground: oklch(0.16 0.05 158);
-  --sidebar-accent: oklch(0.32 0.07 148);
-  --sidebar-accent-foreground: oklch(0.94 0.025 95);
-  --sidebar-border: oklch(0.62 0.1 150 / 32%);
-  --sidebar-ring: oklch(0.74 0.19 152);
+  --sidebar: oklch(0.28 0.030 161);
+  --sidebar-foreground: oklch(0.91 0.018 95);
+  --sidebar-primary: oklch(0.78 0.085 158);
+  --sidebar-primary-foreground: oklch(0.24 0.038 162);
+  --sidebar-accent: oklch(0.36 0.038 155);
+  --sidebar-accent-foreground: oklch(0.88 0.02 95);
+  --sidebar-border: oklch(0.58 0.05 155 / 26%);
+  --sidebar-ring: oklch(0.78 0.085 158);
 }
 
 @layer base {
@@ -168,6 +168,28 @@
 }
 .dark .leaflet-control-attribution a {
   color: var(--muted-foreground);
+}
+
+.dark .user-location-dot {
+  background: #8ecae6;
+  border-color: oklch(0.91 0.018 95);
+}
+.dark .user-location-pulse {
+  background: rgba(142, 202, 230, 0.35);
+}
+.dark .user-location-marker--active .user-location-dot {
+  background: #a8e6bc;
+  box-shadow: 0 0 0 2px rgba(168, 230, 188, 0.3);
+}
+.dark .user-location-marker--active .user-location-pulse {
+  background: rgba(168, 230, 188, 0.35);
+}
+.dark .user-location-marker--following .user-location-dot {
+  box-shadow: 0 0 0 3px rgba(142, 202, 230, 0.3);
+}
+.dark .turn-marker-badge {
+  background: oklch(0.34 0.032 158);
+  box-shadow: 0 1px 4px oklch(0 0 0 / 25%);
 }
 
 .leaflet-coverage-grid {

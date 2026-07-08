@@ -23,12 +23,12 @@ export function MapToolbar({
   weatherError,
 }: Props) {
   return (
-    <div className="absolute top-3 right-3 z-[1001] flex w-full max-w-[11rem] flex-col gap-2">
+    <div className="pointer-events-none absolute top-3 right-3 z-[1001] flex w-[11rem] flex-col gap-2">
       <Button
         type="button"
         size="lg"
         variant="default"
-        className="w-full shadow-md"
+        className="pointer-events-auto w-full shadow-md"
         aria-expanded={directionsOpen}
         disabled={!hasDirections}
         onClick={onDirectionsToggle}
@@ -37,7 +37,7 @@ export function MapToolbar({
         Directions
       </Button>
 
-      <div className="overflow-y-auto rounded-xl border border-border bg-background/95 shadow-md backdrop-blur-sm max-h-[min(60vh,28rem)]">
+      <div className="pointer-events-auto rounded-xl border border-border bg-background/95 shadow-md backdrop-blur-sm">
         <WeatherSection
           weather={weather}
           loading={weatherLoading}
