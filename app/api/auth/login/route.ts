@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { findUserByCode, getSession, toPublicUser, validatePin, verifyPin } from '@/lib/auth'
+import { dbErrorResponse } from '@/lib/db/errors'
 import { parseLoginCode } from '@/lib/user-code'
 
 export const dynamic = 'force-dynamic'
@@ -43,7 +44,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ user: toPublicUser(row) })
   } catch (err) {
-    console.error('[login]', err)
+    const dbErr = dbErrorResponse(err, '[login]')
+    if (dbErr) return dbErr
     return NextResponse.json({ error: 'Login failed' }, { status: 500 })
   }
 }

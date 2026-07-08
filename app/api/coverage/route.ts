@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
-import { claimTiles, clearClaimedTiles, getClaimedTiles } from '@/lib/csv-store'
+import { eq } from 'drizzle-orm'
+import { getDb } from '@/lib/db'
+import { claimedTiles } from '@/lib/db/schema'
 import { requireUser } from '@/lib/auth'
+import { dbErrorResponse } from '@/lib/db/errors'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,10 +13,17 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
     }
-    const tiles = await getClaimedTiles(user.id)
-    return NextResponse.json({ tiles })
+
+    const db = getDb()
+    const rows = await db
+      .select({ tileKey: claimedTiles.tileKey })
+      .from(claimedTiles)
+      .where(eq(claimedTiles.userId, user.id))
+
+    return NextResponse.json({ tiles: rows.map((r) => r.tileKey) })
   } catch (err) {
-    console.error('[coverage GET]', err)
+    const dbErr = dbErrorResponse(err, '[coverage GET]')
+    if (dbErr) return dbErr
     return NextResponse.json({ error: 'Failed to load coverage' }, { status: 500 })
   }
 }
@@ -40,10 +50,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No valid tile keys' }, { status: 400 })
     }
 
-    const added = await claimTiles(user.id, valid)
-    return NextResponse.json({ added: added.length, tiles: added })
+    const db = getDb()
+    const inserted = await db
+      .insert(claimedTiles)
+      .values(
+        valid.map((tileKey) => ({
+          userId: user.id,
+          tileKey,
+        })),
+      )
+      .onConflictDoNothing()
+      .returning({ tileKey: claimedTiles.tileKey })
+
+    return NextResponse.json({
+      added: inserted.length,
+      tiles: inserted.map((r) => r.tileKey),
+    })
   } catch (err) {
-    console.error('[coverage POST]', err)
+    const dbErr = dbErrorResponse(err, '[coverage POST]')
+    if (dbErr) return dbErr
     return NextResponse.json({ error: 'Failed to save coverage' }, { status: 500 })
   }
 }
@@ -54,10 +79,13 @@ export async function DELETE() {
     if (!user) {
       return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
     }
-    await clearClaimedTiles(user.id)
+
+    const db = getDb()
+    await db.delete(claimedTiles).where(eq(claimedTiles.userId, user.id))
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('[coverage DELETE]', err)
+    const dbErr = dbErrorResponse(err, '[coverage DELETE]')
+    if (dbErr) return dbErr
     return NextResponse.json({ error: 'Failed to reset coverage' }, { status: 500 })
   }
 }

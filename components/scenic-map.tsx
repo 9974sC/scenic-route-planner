@@ -6,6 +6,7 @@ import {
   TileLayer,
   Polyline,
   Rectangle,
+  Circle,
   useMap,
   useMapEvents,
 } from 'react-leaflet'
@@ -70,6 +71,9 @@ type Props = {
   travelBearing?: number
   headingAnchor?: LatLng | null
   userPosition?: LatLng | null
+  locationAccuracyM?: number | null
+  followingUserLocation?: boolean
+  onStopFollowingUser?: () => void
   startIsUserLocation?: boolean
   onUseLocationAsStart?: () => void
   alternateRoutes?: AlternateRoute[]
@@ -94,15 +98,19 @@ const FIXED_NORTH_PANE = 'fixedNorthPane'
 function MapController({
   chosen,
   headingUp,
+  followingUser,
 }: {
   chosen: RouteCandidate | null
   headingUp: boolean
+  followingUser: boolean
 }) {
   const map = useMap()
   const chosenRef = useRef(chosen)
   chosenRef.current = chosen
   const headingUpRef = useRef(headingUp)
   headingUpRef.current = headingUp
+  const followingUserRef = useRef(followingUser)
+  followingUserRef.current = followingUser
 
   useEffect(() => {
     const container = map.getContainer()
@@ -112,7 +120,7 @@ function MapController({
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         map.invalidateSize({ animate: false })
-        if (headingUpRef.current) return
+        if (headingUpRef.current || followingUserRef.current) return
         const route = chosenRef.current
         if (route && route.coords.length) {
           map.fitBounds(route.coords as [number, number][], {
@@ -134,9 +142,9 @@ function MapController({
     }
   }, [map])
 
-  // Re-frame whenever the chosen route changes (skip while travel direction is locked).
+  // Re-frame whenever the chosen route changes (skip while locked to heading or user).
   useEffect(() => {
-    if (headingUp) return
+    if (headingUp || followingUser) return
     if (chosen && chosen.coords.length) {
       map.invalidateSize({ animate: false })
       map.fitBounds(chosen.coords as [number, number][], {
@@ -144,7 +152,46 @@ function MapController({
         animate: true,
       })
     }
-  }, [chosen, map, headingUp])
+  }, [chosen, map, headingUp, followingUser])
+
+  return null
+}
+
+/** Center on the user and keep them in view while follow mode is active. */
+function MapLocateController({
+  following,
+  position,
+  onStopFollowing,
+}: {
+  following: boolean
+  position: LatLng | null
+  onStopFollowing: () => void
+}) {
+  const map = useMap()
+  const followingRef = useRef(following)
+  followingRef.current = following
+  const wasFollowingRef = useRef(false)
+
+  useMapEvents({
+    dragstart() {
+      if (followingRef.current) onStopFollowing()
+    },
+  })
+
+  useEffect(() => {
+    if (!following || !position) {
+      wasFollowingRef.current = false
+      return
+    }
+
+    const latlng: [number, number] = [position.lat, position.lng]
+    if (!wasFollowingRef.current) {
+      map.flyTo(latlng, Math.max(map.getZoom(), 15), { duration: 0.45 })
+    } else {
+      map.panTo(latlng, { animate: true, duration: 0.25 })
+    }
+    wasFollowingRef.current = true
+  }, [following, position?.lat, position?.lng, map])
 
   return null
 }
@@ -390,6 +437,9 @@ export default function ScenicMap({
   travelBearing = 0,
   headingAnchor = null,
   userPosition = null,
+  locationAccuracyM = null,
+  followingUserLocation = false,
+  onStopFollowingUser,
   startIsUserLocation = false,
   onUseLocationAsStart,
   alternateRoutes = [],
@@ -421,7 +471,16 @@ export default function ScenicMap({
         attribution='&copy; OpenStreetMap, &copy; CARTO'
         url={TILE_URL[resolvedTheme]}
       />
-      <MapController chosen={chosen} headingUp={headingUp && Boolean(chosen)} />
+      <MapController
+        chosen={chosen}
+        headingUp={headingUp && Boolean(chosen)}
+        followingUser={followingUserLocation}
+      />
+      <MapLocateController
+        following={followingUserLocation}
+        position={userPosition}
+        onStopFollowing={() => onStopFollowingUser?.()}
+      />
       <FixedNorthPane />
       <MapPickHandler active={mapPickActive} onPick={onMapPick} />
       <MapHeadingController
@@ -524,11 +583,28 @@ export default function ScenicMap({
       />
 
       {userPosition ? (
-        <UserLocationMarker
-          position={userPosition}
-          isStart={startIsUserLocation}
-          onSelectAsStart={onUseLocationAsStart}
-        />
+        <>
+          {locationAccuracyM && locationAccuracyM > 0 ? (
+            <Circle
+              center={[userPosition.lat, userPosition.lng]}
+              radius={locationAccuracyM}
+              pathOptions={{
+                color: '#2563eb',
+                fillColor: '#2563eb',
+                fillOpacity: 0.12,
+                weight: 1,
+                opacity: 0.35,
+              }}
+              interactive={false}
+            />
+          ) : null}
+          <UserLocationMarker
+            position={userPosition}
+            isStart={startIsUserLocation}
+            following={followingUserLocation}
+            onSelectAsStart={onUseLocationAsStart}
+          />
+        </>
       ) : null}
     </MapContainer>
   )

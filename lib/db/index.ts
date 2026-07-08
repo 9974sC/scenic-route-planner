@@ -1,13 +1,20 @@
 import { neon } from '@neondatabase/serverless'
 import { drizzle } from 'drizzle-orm/neon-http'
+import { DbNotConfiguredError } from './errors'
 import * as schema from './schema'
 
+let db: ReturnType<typeof drizzle<typeof schema>> | null = null
+
 export function getDb() {
-  const url = process.env.DATABASE_URL
+  if (db) return db
+
+  const url = process.env.DATABASE_URL?.trim()
   if (!url) {
-    throw new Error('DATABASE_URL is not set')
+    throw new DbNotConfiguredError()
   }
-  return drizzle(neon(url), { schema })
+
+  db = drizzle(neon(url), { schema })
+  return db
 }
 
 export { schema }

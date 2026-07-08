@@ -10,10 +10,6 @@ __v0_jsx-dev-runtime.ts
 .env*.local
 .env*
 
-# Local CSV user data (created on first register)
-data/*.csv
-data/user_seq.txt
-
 # Common ignores
 node_modules
 .next/

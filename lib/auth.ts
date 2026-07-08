@@ -1,13 +1,10 @@
 import bcrypt from 'bcryptjs'
+import { eq, sql } from 'drizzle-orm'
 import { getIronSession, type SessionOptions } from 'iron-session'
 import { cookies } from 'next/headers'
-import {
-  allocatePublicCode,
-  findUserByCode as findStoredUserByCode,
-  findUserById,
-  type StoredUser,
-} from '@/lib/csv-store'
-import { displayUserId, parseLoginCode } from '@/lib/user-code'
+import { getDb } from '@/lib/db'
+import { users, type User } from '@/lib/db/schema'
+import { displayUserId, formatUserCode, parseLoginCode } from '@/lib/user-code'
 import type { PublicUser, SessionData } from '@/lib/auth-types'
 
 const PIN_RE = /^\d{4,6}$/
@@ -64,7 +61,7 @@ export async function verifyPin(pin: string, pinHash: string): Promise<boolean> 
   return bcrypt.compare(pin, pinHash)
 }
 
-export function toPublicUser(row: StoredUser): PublicUser {
+export function toPublicUser(row: User): PublicUser {
   return {
     id: row.id,
     publicCode: row.publicCode,
@@ -72,6 +69,36 @@ export function toPublicUser(row: StoredUser): PublicUser {
     email: row.email,
     colorHex: row.colorHex,
   }
+}
+
+export async function allocatePublicCode(): Promise<string> {
+  const db = getDb()
+  const result = await db.execute<{ seq: string }>(
+    sql`SELECT nextval('user_code_seq') AS seq`,
+  )
+  const seq = Number(result.rows[0]?.seq)
+  if (!Number.isFinite(seq) || seq < 1) {
+    throw new Error('Failed to allocate user code')
+  }
+  return formatUserCode(seq)
+}
+
+export async function findUserById(id: string): Promise<User | null> {
+  const db = getDb()
+  const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1)
+  return row ?? null
+}
+
+export async function findUserByCode(codeInput: string): Promise<User | null> {
+  const publicCode = parseLoginCode(codeInput)
+  if (!publicCode) return null
+  const db = getDb()
+  const [row] = await db
+    .select()
+    .from(users)
+    .where(eq(users.publicCode, publicCode))
+    .limit(1)
+  return row ?? null
 }
 
 export async function requireUser() {
@@ -83,12 +110,4 @@ export async function requireUser() {
     return null
   }
   return toPublicUser(row)
-}
-
-export { allocatePublicCode }
-
-export async function findUserByCode(codeInput: string) {
-  const publicCode = parseLoginCode(codeInput)
-  if (!publicCode) return null
-  return findStoredUserByCode(publicCode)
 }

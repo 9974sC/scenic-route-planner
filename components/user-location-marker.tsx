@@ -6,15 +6,23 @@ import type { LatLng } from '@/lib/types'
 
 const ICON_CACHE = new Map<string, L.DivIcon>()
 
-function userLocationIcon(active: boolean): L.DivIcon {
-  const key = active ? 'active' : 'idle'
+function userLocationIcon(active: boolean, following: boolean): L.DivIcon {
+  const key = active ? 'active' : following ? 'following' : 'idle'
   const cached = ICON_CACHE.get(key)
   if (cached) return cached
 
   const size = 20
+  const classes = [
+    'user-location-marker',
+    active ? 'user-location-marker--active' : '',
+    following ? 'user-location-marker--following' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   const icon = L.divIcon({
     className: 'user-location-leaflet-icon',
-    html: `<div class="user-location-marker${active ? ' user-location-marker--active' : ''}" style="width:${size}px;height:${size}px"><span class="user-location-dot"></span><span class="user-location-pulse"></span></div>`,
+    html: `<div class="${classes}" style="width:${size}px;height:${size}px"><span class="user-location-dot"></span><span class="user-location-pulse"></span></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })
@@ -25,18 +33,20 @@ function userLocationIcon(active: boolean): L.DivIcon {
 type Props = {
   position: LatLng
   isStart?: boolean
+  following?: boolean
   onSelectAsStart?: () => void
 }
 
 export function UserLocationMarker({
   position,
   isStart = false,
+  following = false,
   onSelectAsStart,
 }: Props) {
   return (
     <Marker
       position={[position.lat, position.lng]}
-      icon={userLocationIcon(isStart)}
+      icon={userLocationIcon(isStart, following && !isStart)}
       zIndexOffset={700}
       interactive={Boolean(onSelectAsStart)}
       eventHandlers={

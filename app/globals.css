@@ -259,6 +259,13 @@
 .user-location-marker--active .user-location-pulse {
   background: rgba(22, 163, 74, 0.35);
 }
+.user-location-marker--following .user-location-dot {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+.user-location-marker--following .user-location-pulse {
+  background: rgba(37, 99, 235, 0.45);
+  animation-duration: 1.6s;
+}
 @keyframes user-location-pulse {
   0% {
     transform: scale(1);

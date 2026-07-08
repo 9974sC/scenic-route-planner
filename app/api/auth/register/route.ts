@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
-import { createUser, allocatePublicCode } from '@/lib/csv-store'
+import { getDb } from '@/lib/db'
+import { dbErrorResponse } from '@/lib/db/errors'
+import { users } from '@/lib/db/schema'
 import {
+  allocatePublicCode,
   getSession,
   hashPin,
   toPublicUser,
@@ -33,13 +36,18 @@ export async function POST(req: Request) {
 
     const publicCode = await allocatePublicCode()
     const pinHash = await hashPin(pin)
+    const norm = email.trim().toLowerCase()
 
-    const created = await createUser({
-      publicCode,
-      email,
-      pinHash,
-      colorHex,
-    })
+    const db = getDb()
+    const [created] = await db
+      .insert(users)
+      .values({
+        publicCode,
+        email: norm,
+        pinHash,
+        colorHex,
+      })
+      .returning()
 
     const session = await getSession()
     session.userId = created.id
@@ -52,13 +60,18 @@ export async function POST(req: Request) {
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Registration failed'
-    if (msg.includes('duplicate')) {
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: string }).code)
+        : ''
+    if (code === '23505' || msg.includes('duplicate')) {
       return NextResponse.json(
         { error: 'That email is already registered' },
         { status: 409 },
       )
     }
-    console.error('[register]', err)
+    const dbErr = dbErrorResponse(err, '[register]')
+    if (dbErr) return dbErr
     return NextResponse.json({ error: 'Registration failed' }, { status: 500 })
   }
 }

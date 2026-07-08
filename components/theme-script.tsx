@@ -7,7 +7,7 @@ export function ThemeScript() {
     var theme = localStorage.getItem(key);
     var dark =
       theme === 'dark' ||
-      (theme !== 'light' &&
+      (theme === 'system' &&
         window.matchMedia('(prefers-color-scheme: dark)').matches);
     if (dark) document.documentElement.classList.add('dark');
   } catch (e) {}

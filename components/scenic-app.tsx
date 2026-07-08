@@ -23,6 +23,7 @@ import { RouteSummary } from '@/components/route-summary'
 import { CoveragePanel } from '@/components/coverage-panel'
 import { DirectionsPanel } from '@/components/directions-panel'
 import { MapToolbar } from '@/components/map-toolbar'
+import { LocateMeButton } from '@/components/locate-me-button'
 import { AuthPanel } from '@/components/auth-panel'
 import { UserBadge } from '@/components/user-badge'
 import { TripHistoryPanel } from '@/components/trip-history-panel'
@@ -63,7 +64,7 @@ export function ScenicApp() {
     if (user) return new Set(claimedTiles)
     return localCoverage
   }, [user, claimedTiles, localCoverage])
-  const [showCoverage, setShowCoverage] = useState(true)
+  const [showCoverage, setShowCoverage] = useState(false)
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [sidebarEl, setSidebarEl] = useState<HTMLDivElement | null>(null)
@@ -73,7 +74,12 @@ export function ScenicApp() {
   const [directionsOpen, setDirectionsOpen] = useState(false)
   const [headingUp, setHeadingUp] = useState(false)
   const [userPosition, setUserPosition] = useState<LatLng | null>(null)
+  const [locationAccuracyM, setLocationAccuracyM] = useState<number | null>(
+    null,
+  )
   const [geoAvailable, setGeoAvailable] = useState(false)
+  const [followingUser, setFollowingUser] = useState(false)
+  const [geoError, setGeoError] = useState<string | null>(null)
   const startTouchedRef = useRef(false)
   const geoDefaultAppliedRef = useRef(false)
 
@@ -92,7 +98,9 @@ export function ScenicApp() {
           lng: pos.coords.longitude,
         }
         setUserPosition(point)
+        setLocationAccuracyM(pos.coords.accuracy)
         setGeoAvailable(true)
+        setGeoError(null)
 
         setStart((current) => {
           if (isLocationEndpoint(current)) {
@@ -107,7 +115,9 @@ export function ScenicApp() {
       },
       () => {
         setUserPosition(null)
+        setLocationAccuracyM(null)
         setGeoAvailable(false)
+        setFollowingUser(false)
       },
       { enableHighAccuracy: true, maximumAge: 15_000, timeout: 10_000 },
     )
@@ -223,6 +233,39 @@ export function ScenicApp() {
     if (!userPosition) return
     setStartManual(locationEndpoint(userPosition))
   }, [userPosition, setStartManual])
+
+  const handleLocate = useCallback(() => {
+    setGeoError(null)
+
+    if (!navigator.geolocation) {
+      setGeoError('Location is not supported in this browser.')
+      return
+    }
+
+    if (userPosition) {
+      setFollowingUser(true)
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const point: LatLng = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        }
+        setUserPosition(point)
+        setLocationAccuracyM(pos.coords.accuracy)
+        setGeoAvailable(true)
+        setFollowingUser(true)
+      },
+      () => {
+        setGeoError(
+          'Could not access your location. Allow location access in your browser.',
+        )
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 },
+    )
+  }, [userPosition])
 
   const handleMapPick = useCallback(
     (point: { lat: number; lng: number }) => {
@@ -380,6 +423,12 @@ export function ScenicApp() {
 
         <AuthPanel />
 
+        {geoError ? (
+          <p className="text-sm text-destructive" role="alert">
+            {geoError}
+          </p>
+        ) : null}
+
         {saveError ? (
           <p className="text-sm text-destructive" role="alert">
             {saveError}
@@ -411,6 +460,11 @@ export function ScenicApp() {
           canUseHeading={Boolean(chosen?.coords.length)}
           directionsPanelOpen={directionsOpen}
         />
+        <LocateMeButton
+          active={followingUser}
+          onLocate={handleLocate}
+          directionsPanelOpen={directionsOpen}
+        />
         <ScenicMap
           start={start.point}
           end={end.point}
@@ -424,7 +478,10 @@ export function ScenicApp() {
           headingUp={headingUp}
           travelBearing={travelBearing}
           headingAnchor={navigationPosition}
-          userPosition={geoAvailable ? userPosition : null}
+          userPosition={userPosition}
+          locationAccuracyM={locationAccuracyM}
+          followingUserLocation={followingUser}
+          onStopFollowingUser={() => setFollowingUser(false)}
           startIsUserLocation={isLocationEndpoint(start)}
           onUseLocationAsStart={
             geoAvailable && userPosition ? handleUseLocationAsStart : undefined
