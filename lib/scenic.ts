@@ -81,6 +81,57 @@ export function pickScenic(
  * Pick a return leg that forms a loop: scenic within budget, minimal overlap
  * with the outbound path (avoids backtracking and parallel duplicates).
  */
+export type ReturnPathPreference = 'scenic' | 'longest' | 'shortest'
+
+function eligibleReturnIndices(
+  candidates: RouteCandidate[],
+  directIndex: number,
+  budgetMinutes: number,
+): number[] {
+  const direct = candidates[directIndex]
+  const indices: number[] = []
+
+  candidates.forEach((c, i) => {
+    const extraMin = (c.duration - direct.duration) / 60
+    if (extraMin <= budgetMinutes + 0.5) indices.push(i)
+  })
+
+  return indices.length ? indices : [directIndex]
+}
+
+export function pickReturnByPreference(
+  candidates: RouteCandidate[],
+  directIndex: number,
+  weights: ScenicWeights,
+  budgetMinutes: number,
+  outboundCoords: [number, number][],
+  preference: ReturnPathPreference,
+): number {
+  const pool = eligibleReturnIndices(candidates, directIndex, budgetMinutes)
+
+  if (preference === 'shortest') {
+    return pool.reduce(
+      (best, i) => (candidates[i].distance < candidates[best].distance ? i : best),
+      pool[0],
+    )
+  }
+
+  if (preference === 'longest') {
+    return pool.reduce(
+      (best, i) => (candidates[i].distance > candidates[best].distance ? i : best),
+      pool[0],
+    )
+  }
+
+  return pickReturnRoute(
+    candidates,
+    directIndex,
+    weights,
+    budgetMinutes,
+    outboundCoords,
+  )
+}
+
 export function pickReturnRoute(
   candidates: RouteCandidate[],
   directIndex: number,
@@ -96,16 +147,14 @@ export function pickReturnRoute(
     loopScore: number
   }[] = []
 
-  candidates.forEach((c, i) => {
-    const extraMin = (c.duration - direct.duration) / 60
-    if (extraMin > budgetMinutes + 0.5) return
-
+  for (const i of eligibleReturnIndices(candidates, directIndex, budgetMinutes)) {
+    const c = candidates[i]
     const scenic = weightedScenic(c, weights)
     const overlap = pathOverlapRatio(outboundCoords, c.coords)
     const loopScore = scenic * (1 - overlap) ** 2 + (1 - overlap) * 0.3
 
     eligible.push({ index: i, scenic, overlap, loopScore })
-  })
+  }
 
   if (!eligible.length) return directIndex
 
@@ -127,18 +176,15 @@ export function rankReturnCandidates(
   budgetMinutes: number,
   outboundCoords: [number, number][],
 ): number[] {
-  const direct = candidates[directIndex]
   const ranked: { index: number; loopScore: number; overlap: number }[] = []
 
-  candidates.forEach((c, i) => {
-    const extraMin = (c.duration - direct.duration) / 60
-    if (extraMin > budgetMinutes + 0.5) return
-
+  for (const i of eligibleReturnIndices(candidates, directIndex, budgetMinutes)) {
+    const c = candidates[i]
     const scenic = weightedScenic(c, weights)
     const overlap = pathOverlapRatio(outboundCoords, c.coords)
     const loopScore = scenic * (1 - overlap) ** 2 + (1 - overlap) * 0.3
     ranked.push({ index: i, loopScore, overlap })
-  })
+  }
 
   if (!ranked.length) return [directIndex]
 

@@ -6,8 +6,15 @@ export type PublicUser = {
   id: string
   publicCode: string
   displayId: string
-  email: string
+  username: string
+  displayName: string | null
+  bio: string | null
+  location: string | null
   colorHex: string
+  hasAvatar: boolean
+  avatarVersion: number
+  /** ISO timestamp when color can be changed again; null if allowed now. */
+  colorChangeAvailableAt: string | null
 }
 
 export type TripSummary = {
@@ -29,4 +36,24 @@ export type MeResponse = {
   user: PublicUser
   claimedTiles: string[]
   trips: TripSummary[]
+}
+
+export type RegisterInput = {
+  username: string
+  password: string
+  colorHex: string
+  displayName?: string
+  bio?: string
+  location?: string
+}
+
+export type LoginInput = {
+  username: string
+  password: string
+}
+
+export type ProfileUpdateInput = {
+  displayName?: string
+  bio?: string
+  location?: string
 }

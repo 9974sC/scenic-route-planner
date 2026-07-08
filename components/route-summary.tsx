@@ -1,6 +1,7 @@
 'use client'
 
 import type { RouteCandidate } from '@/lib/types'
+import type { ReturnPathPreference } from '@/lib/scenic'
 import {
   fmtBiggestHill,
   fmtDistance,
@@ -24,8 +25,11 @@ type Props = {
   chosen: RouteCandidate
   direct: RouteCandidate
   returnLeg?: RouteCandidate | null
+  returnPreference?: ReturnPathPreference
   onFindReturn?: () => void
   onClearReturn?: () => void
+  onChooseShortestReturn?: () => void
+  onChooseLongestReturn?: () => void
   returnLoading?: boolean
 }
 
@@ -58,8 +62,11 @@ export function RouteSummary({
   chosen,
   direct,
   returnLeg = null,
+  returnPreference = 'scenic',
   onFindReturn,
   onClearReturn,
+  onChooseShortestReturn,
+  onChooseLongestReturn,
   returnLoading = false,
 }: Props) {
   const extraSec = chosen.duration - direct.duration
@@ -123,29 +130,51 @@ export function RouteSummary({
       </div>
 
       {onFindReturn ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={returnLeg ? 'secondary' : 'outline'}
-            disabled={returnLoading}
-            onClick={onFindReturn}
-          >
-            {returnLoading ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <RotateCcw className="size-4" aria-hidden />
-            )}
-            {returnLoading
-              ? 'Finding return…'
-              : returnLeg
-                ? 'Try another return'
-                : 'Find loop return'}
-          </Button>
-          {returnLeg && onClearReturn ? (
-            <Button type="button" size="sm" variant="ghost" onClick={onClearReturn}>
-              Outbound only
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={returnLeg ? 'secondary' : 'outline'}
+              disabled={returnLoading}
+              onClick={onFindReturn}
+            >
+              {returnLoading ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <RotateCcw className="size-4" aria-hidden />
+              )}
+              {returnLoading
+                ? 'Finding return…'
+                : returnLeg
+                  ? 'Try another return'
+                  : 'Find loop return'}
             </Button>
+            {returnLeg && onClearReturn ? (
+              <Button type="button" size="sm" variant="ghost" onClick={onClearReturn}>
+                Outbound only
+              </Button>
+            ) : null}
+          </div>
+          {returnLeg && onChooseShortestReturn && onChooseLongestReturn ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={returnPreference === 'shortest' ? 'secondary' : 'outline'}
+                onClick={onChooseShortestReturn}
+              >
+                Choose shortest path
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={returnPreference === 'longest' ? 'secondary' : 'outline'}
+                onClick={onChooseLongestReturn}
+              >
+                Choose longest path
+              </Button>
+            </div>
           ) : null}
         </div>
       ) : null}

@@ -18,6 +18,8 @@ import { outboundBulgeSide } from '@/lib/route-overlap'
 import {
   CYCLING_SPEED_MS,
   graphHopperCyclingRequestBody,
+  graphHopperCyclingUrl,
+  isGraphHopperFlexibleModeError,
 } from '@/lib/cycling-routing'
 import type { TurnMarker } from '@/lib/types'
 
@@ -54,6 +56,45 @@ async function fetchGraphHopper(
   end: LatLng,
   key: string,
 ): Promise<RouteResponse> {
+  const useFlexible = process.env.GRAPHHOPPER_FLEXIBLE === 'true'
+
+  if (useFlexible) {
+    try {
+      return await fetchGraphHopperPost(start, end, key)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (!isGraphHopperFlexibleModeError(message)) throw err
+      console.log('[route] GraphHopper flexible mode unavailable, using GET bike')
+    }
+  }
+
+  return fetchGraphHopperGet(start, end, key)
+}
+
+async function fetchGraphHopperGet(
+  start: LatLng,
+  end: LatLng,
+  key: string,
+): Promise<RouteResponse> {
+  const res = await fetch(graphHopperCyclingUrl(start, end, key), {
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(
+      `GraphHopper ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`,
+    )
+  }
+
+  return parseGraphHopperResponse(await res.json())
+}
+
+async function fetchGraphHopperPost(
+  start: LatLng,
+  end: LatLng,
+  key: string,
+): Promise<RouteResponse> {
   const res = await fetch(
     `https://graphhopper.com/api/1/route?key=${encodeURIComponent(key)}`,
     {
@@ -70,8 +111,18 @@ async function fetchGraphHopper(
       `GraphHopper ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`,
     )
   }
-  const json = await res.json()
 
+  return parseGraphHopperResponse(await res.json())
+}
+
+function parseGraphHopperResponse(json: {
+  paths?: Array<{
+    points?: { coordinates?: number[][] }
+    distance?: number
+    time?: number
+    instructions?: GraphHopperInstruction[]
+  }>
+}): RouteResponse {
   const paths: any[] = json.paths ?? []
   if (!paths.length) throw new Error('no paths')
 

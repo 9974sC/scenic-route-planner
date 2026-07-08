@@ -15,9 +15,16 @@ export const userCodeSeq = pgSequence('user_code_seq')
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   publicCode: text('public_code').notNull().unique(),
-  email: text('email').notNull().unique(),
-  pinHash: text('pin_hash').notNull(),
+  username: text('username').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  email: text('email').unique(),
+  displayName: text('display_name'),
+  bio: text('bio'),
+  location: text('location'),
+  avatarMime: text('avatar_mime'),
+  avatarData: text('avatar_data'),
   colorHex: text('color_hex').notNull(),
+  colorChangedAt: timestamp('color_changed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),

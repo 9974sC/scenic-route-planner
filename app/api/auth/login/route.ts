@@ -1,41 +1,47 @@
 import { NextResponse } from 'next/server'
-import { findUserByCode, getSession, toPublicUser, validatePin, verifyPin } from '@/lib/auth'
+import {
+  findUserByUsername,
+  getSession,
+  toPublicUser,
+  validatePassword,
+  validateUsername,
+  verifyPassword,
+} from '@/lib/auth'
 import { dbErrorResponse } from '@/lib/db/errors'
-import { parseLoginCode } from '@/lib/user-code'
 
 export const dynamic = 'force-dynamic'
 
 type Body = {
-  code?: string
-  pin?: string
+  username?: string
+  password?: string
 }
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body
-    const code = body.code ?? ''
-    const pin = body.pin ?? ''
+    const username = body.username ?? ''
+    const password = body.password ?? ''
 
-    if (!parseLoginCode(code)) {
-      return NextResponse.json(
-        { error: 'Enter your code like AA0001' },
-        { status: 400 },
-      )
+    const usernameErr = validateUsername(username)
+    if (usernameErr) {
+      return NextResponse.json({ error: usernameErr }, { status: 400 })
     }
-    const pinErr = validatePin(pin)
-    if (pinErr) return NextResponse.json({ error: pinErr }, { status: 400 })
+    const passwordErr = validatePassword(password)
+    if (passwordErr) {
+      return NextResponse.json({ error: passwordErr }, { status: 400 })
+    }
 
-    const row = await findUserByCode(code)
+    const row = await findUserByUsername(username)
     if (!row) {
       return NextResponse.json(
-        { error: 'No account with that code' },
+        { error: 'No account with that username' },
         { status: 401 },
       )
     }
 
-    const ok = await verifyPin(pin, row.pinHash)
+    const ok = await verifyPassword(password, row.passwordHash)
     if (!ok) {
-      return NextResponse.json({ error: 'Wrong PIN' }, { status: 401 })
+      return NextResponse.json({ error: 'Wrong password' }, { status: 401 })
     }
 
     const session = await getSession()

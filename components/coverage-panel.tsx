@@ -3,7 +3,7 @@
 import { totalTiles } from '@/lib/geo'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
-import { Map, Plus, RotateCcw } from 'lucide-react'
+import { Map, Plus, RotateCcw, Trophy } from 'lucide-react'
 
 type Props = {
   coverageCount: number
@@ -13,6 +13,8 @@ type Props = {
   onReset: () => void
   justAdded: number | null
   signedIn?: boolean
+  onOpenLeaderboard?: () => void
+  leaderboardOpen?: boolean
 }
 
 export function CoveragePanel({
@@ -23,6 +25,8 @@ export function CoveragePanel({
   onReset,
   justAdded,
   signedIn = false,
+  onOpenLeaderboard,
+  leaderboardOpen = false,
 }: Props) {
   const total = totalTiles()
   const pct = total ? (coverageCount / total) * 100 : 0
@@ -66,19 +70,34 @@ export function CoveragePanel({
         />
       </div>
 
-      <div className="flex gap-2">
-        <Button size="sm" className="flex-1" onClick={onAddRoute}>
-          <Plus className="size-4" />
-          Ride this route
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onReset}
-          aria-label="Reset coverage"
-        >
-          <RotateCcw className="size-4" />
-        </Button>
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <Button size="sm" className="flex-1" onClick={onAddRoute}>
+            <Plus className="size-4" />
+            Ride this route
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onReset}
+            aria-label="Reset coverage"
+          >
+            <RotateCcw className="size-4" />
+          </Button>
+        </div>
+        {onOpenLeaderboard ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={leaderboardOpen ? 'default' : 'outline'}
+            className="w-full"
+            onClick={onOpenLeaderboard}
+            aria-pressed={leaderboardOpen}
+          >
+            <Trophy className="size-4" />
+            {leaderboardOpen ? 'Hide leaderboard' : 'Leaderboard'}
+          </Button>
+        ) : null}
       </div>
       <p className="text-pretty text-xs leading-relaxed text-muted-foreground">
         Every road you actually ride fills in the grid. Come back to chase the

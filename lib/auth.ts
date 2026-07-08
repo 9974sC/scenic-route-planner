@@ -4,12 +4,14 @@ import { getIronSession, type SessionOptions } from 'iron-session'
 import { cookies } from 'next/headers'
 import { getDb } from '@/lib/db'
 import { users, type User } from '@/lib/db/schema'
-import { displayUserId, formatUserCode, parseLoginCode } from '@/lib/user-code'
+import { displayUserId, formatUserCode } from '@/lib/user-code'
 import type { PublicUser, SessionData } from '@/lib/auth-types'
+import { colorChangeStatus } from '@/lib/profile'
 
-const PIN_RE = /^\d{4,6}$/
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const USERNAME_RE = /^[a-z0-9_]{3,24}$/
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/
+const PASSWORD_MIN = 8
+const PASSWORD_MAX = 128
 
 const DEV_SESSION_FALLBACK =
   'scenic-localhost-dev-session-secret-32ch'
@@ -37,14 +39,25 @@ export async function getSession() {
   return getIronSession<SessionData>(await cookies(), sessionOptions())
 }
 
-export function validateEmail(email: string): string | null {
-  const v = email.trim().toLowerCase()
-  if (!EMAIL_RE.test(v)) return 'Enter a valid email address'
+export function normalizeUsername(username: string): string {
+  return username.trim().toLowerCase()
+}
+
+export function validateUsername(username: string): string | null {
+  const v = normalizeUsername(username)
+  if (!USERNAME_RE.test(v)) {
+    return 'Username must be 3–24 characters: lowercase letters, numbers, underscore'
+  }
   return null
 }
 
-export function validatePin(pin: string): string | null {
-  if (!PIN_RE.test(pin)) return 'PIN must be 4–6 digits'
+export function validatePassword(password: string): string | null {
+  if (password.length < PASSWORD_MIN) {
+    return `Password must be at least ${PASSWORD_MIN} characters`
+  }
+  if (password.length > PASSWORD_MAX) {
+    return `Password must be ${PASSWORD_MAX} characters or fewer`
+  }
   return null
 }
 
@@ -53,21 +66,33 @@ export function validateColorHex(colorHex: string): string | null {
   return null
 }
 
-export async function hashPin(pin: string): Promise<string> {
-  return bcrypt.hash(pin, 12)
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 12)
 }
 
-export async function verifyPin(pin: string, pinHash: string): Promise<boolean> {
-  return bcrypt.compare(pin, pinHash)
+export async function verifyPassword(
+  password: string,
+  passwordHash: string,
+): Promise<boolean> {
+  return bcrypt.compare(password, passwordHash)
 }
 
 export function toPublicUser(row: User): PublicUser {
+  const colorStatus = colorChangeStatus(row.colorChangedAt)
   return {
     id: row.id,
     publicCode: row.publicCode,
     displayId: displayUserId(row.publicCode),
-    email: row.email,
+    username: row.username,
+    displayName: row.displayName,
+    bio: row.bio,
+    location: row.location,
     colorHex: row.colorHex,
+    hasAvatar: Boolean(row.avatarMime && row.avatarData),
+    avatarVersion: row.avatarData?.length ?? 0,
+    colorChangeAvailableAt: colorStatus.allowed
+      ? null
+      : colorStatus.availableAt?.toISOString() ?? null,
   }
 }
 
@@ -89,14 +114,16 @@ export async function findUserById(id: string): Promise<User | null> {
   return row ?? null
 }
 
-export async function findUserByCode(codeInput: string): Promise<User | null> {
-  const publicCode = parseLoginCode(codeInput)
-  if (!publicCode) return null
+export async function findUserByUsername(
+  usernameInput: string,
+): Promise<User | null> {
+  const username = normalizeUsername(usernameInput)
+  if (!username) return null
   const db = getDb()
   const [row] = await db
     .select()
     .from(users)
-    .where(eq(users.publicCode, publicCode))
+    .where(eq(users.username, username))
     .limit(1)
   return row ?? null
 }
@@ -110,4 +137,20 @@ export async function requireUser() {
     return null
   }
   return toPublicUser(row)
+}
+
+export async function requireUserRow() {
+  const session = await getSession()
+  if (!session.userId) return null
+  const row = await findUserById(session.userId)
+  if (!row) {
+    session.destroy()
+    return null
+  }
+  return row
+}
+
+export function duplicateUserMessage(code: string): string | null {
+  if (code !== '23505') return null
+  return 'That username is already taken'
 }

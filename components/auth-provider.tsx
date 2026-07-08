@@ -9,7 +9,14 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { MeResponse, PublicUser, TripSummary } from '@/lib/auth-types'
+import type {
+  LoginInput,
+  MeResponse,
+  ProfileUpdateInput,
+  PublicUser,
+  RegisterInput,
+  TripSummary,
+} from '@/lib/auth-types'
 
 type AuthState = {
   user: PublicUser | null
@@ -21,19 +28,34 @@ type AuthState = {
 
 type AuthContextValue = AuthState & {
   refresh: () => Promise<void>
-  register: (input: {
-    email: string
-    pin: string
-    colorHex: string
-  }) => Promise<{ error?: string; displayId?: string }>
-  login: (input: {
-    code: string
-    pin: string
-  }) => Promise<{ error?: string }>
+  register: (
+    input: RegisterInput,
+  ) => Promise<{ error?: string; displayId?: string }>
+  login: (input: LoginInput) => Promise<{ error?: string }>
   logout: () => Promise<void>
+  updateProfile: (
+    input: ProfileUpdateInput,
+  ) => Promise<{ error?: string; user?: PublicUser }>
+  updateColor: (
+    colorHex: string,
+  ) => Promise<{
+    error?: string
+    colorChangeAvailableAt?: string | null
+    user?: PublicUser
+  }>
+  uploadAvatar: (
+    file: File,
+  ) => Promise<{ error?: string; user?: PublicUser }>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+
+function applyUserToState(
+  setState: React.Dispatch<React.SetStateAction<AuthState>>,
+  user: PublicUser,
+) {
+  setState((s) => ({ ...s, user, error: null }))
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -83,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh])
 
   const register = useCallback(
-    async (input: { email: string; pin: string; colorHex: string }) => {
+    async (input: RegisterInput) => {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -99,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const login = useCallback(
-    async (input: { code: string; pin: string }) => {
+    async (input: LoginInput) => {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -128,6 +150,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const updateProfile = useCallback(async (input: ProfileUpdateInput) => {
+    const res = await fetch('/api/me', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(input),
+    })
+    const data = await res.json()
+    if (!res.ok) return { error: data.error ?? 'Could not save profile' }
+    applyUserToState(setState, data.user as PublicUser)
+    return { user: data.user as PublicUser }
+  }, [])
+
+  const updateColor = useCallback(async (colorHex: string) => {
+    const res = await fetch('/api/me?action=color', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ colorHex }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      return {
+        error: data.error ?? 'Could not update color',
+        colorChangeAvailableAt: data.colorChangeAvailableAt as
+          | string
+          | null
+          | undefined,
+      }
+    }
+    applyUserToState(setState, data.user as PublicUser)
+    return { user: data.user as PublicUser }
+  }, [])
+
+  const uploadAvatar = useCallback(async (file: File) => {
+    const form = new FormData()
+    form.set('avatar', file)
+    const res = await fetch('/api/me?action=avatar', {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    })
+    const data = await res.json()
+    if (!res.ok) return { error: data.error ?? 'Could not upload photo' }
+    applyUserToState(setState, data.user as PublicUser)
+    return { user: data.user as PublicUser }
+  }, [])
+
   const value = useMemo(
     () => ({
       ...state,
@@ -135,8 +205,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       login,
       logout,
+      updateProfile,
+      updateColor,
+      uploadAvatar,
     }),
-    [state, refresh, register, login, logout],
+    [
+      state,
+      refresh,
+      register,
+      login,
+      logout,
+      updateProfile,
+      updateColor,
+      uploadAvatar,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

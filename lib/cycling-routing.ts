@@ -1,4 +1,5 @@
 import type { LatLng } from '@/lib/types'
+import { WARSAW_BBOX, TILE_SIZE } from '@/lib/geo'
 
 /** Typical leisure cycling pace used for simulated ETAs (km/h). */
 export const CYCLING_SPEED_KMH = 20
@@ -9,8 +10,8 @@ export const CYCLING_SPEED_MAX_KMH = 25
 export const CYCLING_SPEED_MS = (CYCLING_SPEED_KMH * 1000) / 3600
 
 /**
- * GraphHopper custom model: stay on roads cyclists may legally use in Poland/EU.
- * Excludes motorways, expressways (trunk), tunnels, ferries, and steps.
+ * GraphHopper custom model for paid/flexible plans only.
+ * Free API keys reject POST requests that set ch.disable or custom_model.
  */
 export const GRAPHHOPPER_BIKE_CUSTOM_MODEL = {
   priority: [
@@ -30,7 +31,6 @@ export const GRAPHHOPPER_BIKE_CUSTOM_MODEL = {
   ],
 }
 
-/** Do not snap start/end to roads cyclists cannot use. */
 export const GRAPHHOPPER_SNAP_PREVENTIONS = [
   'motorway',
   'trunk',
@@ -38,6 +38,24 @@ export const GRAPHHOPPER_SNAP_PREVENTIONS = [
   'ferry',
 ] as const
 
+/** Standard bike routing URL — works on GraphHopper free tier. */
+export function graphHopperCyclingUrl(start: LatLng, end: LatLng, key: string) {
+  const url = new URL('https://graphhopper.com/api/1/route')
+  url.searchParams.set('point', `${start.lat},${start.lng}`)
+  url.searchParams.append('point', `${end.lat},${end.lng}`)
+  url.searchParams.set('profile', 'bike')
+  url.searchParams.set('points_encoded', 'false')
+  url.searchParams.set('elevation', 'true')
+  url.searchParams.set('instructions', 'true')
+  url.searchParams.set('algorithm', 'alternative_route')
+  url.searchParams.set('alternative_route.max_paths', '6')
+  url.searchParams.set('alternative_route.max_weight_factor', '5')
+  url.searchParams.set('alternative_route.max_share_factor', '0.35')
+  url.searchParams.set('key', key)
+  return url.toString()
+}
+
+/** Flexible-mode POST body — only for paid GraphHopper plans. */
 export function graphHopperCyclingRequestBody(start: LatLng, end: LatLng) {
   return {
     points: [
@@ -56,6 +74,10 @@ export function graphHopperCyclingRequestBody(start: LatLng, end: LatLng) {
     custom_model: GRAPHHOPPER_BIKE_CUSTOM_MODEL,
     snap_preventions: [...GRAPHHOPPER_SNAP_PREVENTIONS],
   }
+}
+
+export function isGraphHopperFlexibleModeError(message: string): boolean {
+  return /flexible mode/i.test(message)
 }
 
 export function durationFromDistanceM(distanceM: number): number {

@@ -10,7 +10,11 @@ import {
   useMapEvents,
 } from 'react-leaflet'
 import type { LatLng, RouteCandidate } from '@/lib/types'
-import { WARSAW_BBOX, WARSAW_CENTER, TILE_SIZE } from '@/lib/geo'
+import { WARSAW_CENTER } from '@/lib/geo'
+import {
+  cellCorners,
+  visibleGridCells,
+} from '@/lib/coverage-grid'
 import type { PastPath } from '@/lib/past-paths'
 import { joinLoopCoords } from '@/lib/route-overlap'
 import { AlternateRoutesLayer, type AlternateRoute } from '@/components/alternate-routes-layer'
@@ -18,6 +22,8 @@ import { PastPathsLayer } from '@/components/past-paths-layer'
 import { TurnMarkersLayer } from '@/components/turn-markers-layer'
 import { RouteEndpointMarkers } from '@/components/route-endpoint-markers'
 import { UserLocationMarker } from '@/components/user-location-marker'
+import { LeaderboardGridLayer } from '@/components/leaderboard-grid-layer'
+import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import { useTheme } from '@/components/theme-provider'
 
 // Leaflet writes SVG stroke attributes, so CSS vars won't resolve in pathOptions.
@@ -80,6 +86,8 @@ type Props = {
   onSelectRoute?: (index: number) => void
   pastPaths?: PastPath[]
   returnRoute?: RouteCandidate | null
+  leaderboardOpen?: boolean
+  leaderboardEntries?: LeaderboardEntry[]
 }
 
 // One controller keeps the map sized to its container and frames the chosen
@@ -226,7 +234,7 @@ function MapPickHandler({
   return null
 }
 
-/** Canvas-drawn coverage grid aligned to geographic tile bounds. */
+/** Canvas grid pinned to map container coords (not a transformed Leaflet pane). */
 function CoverageGridLayer({
   visible,
   color,
@@ -248,46 +256,40 @@ function CoverageGridLayer({
   useEffect(() => {
     if (!visible) return
 
-    const pane = map.getPane('overlayPane')
-    if (!pane) return
-
+    const container = map.getContainer()
     const canvas = document.createElement('canvas')
-    canvas.className =
-      'leaflet-coverage-grid pointer-events-none absolute left-0 top-0'
-    pane.appendChild(canvas)
+    canvas.className = 'leaflet-coverage-grid pointer-events-none'
+    canvas.style.position = 'absolute'
+    canvas.style.left = '0'
+    canvas.style.top = '0'
+    canvas.style.zIndex = '350'
+    container.appendChild(canvas)
 
     const drawCell = (
       ctx: CanvasRenderingContext2D,
-      tx: number,
-      ty: number,
+      cell: ReturnType<typeof visibleGridCells>[number],
       covered: Set<string>,
       viewSize: { x: number; y: number },
     ) => {
-      const south = WARSAW_BBOX.south + ty * TILE_SIZE
-      const north = south + TILE_SIZE
-      const west = WARSAW_BBOX.west + tx * TILE_SIZE
-      const east = west + TILE_SIZE
-
-      const nw = map.latLngToContainerPoint([north, west])
-      const ne = map.latLngToContainerPoint([north, east])
-      const sw = map.latLngToContainerPoint([south, west])
-      const se = map.latLngToContainerPoint([south, east])
-
-      const minX = Math.min(nw.x, ne.x, sw.x, se.x)
-      const maxX = Math.max(nw.x, ne.x, sw.x, se.x)
-      const minY = Math.min(nw.y, ne.y, sw.y, se.y)
-      const maxY = Math.max(nw.y, ne.y, sw.y, se.y)
+      const corners = cellCorners(cell).map(([lat, lng]) =>
+        map.latLngToContainerPoint([lat, lng]),
+      )
+      const xs = corners.map((p) => p.x)
+      const ys = corners.map((p) => p.y)
+      const minX = Math.min(...xs)
+      const maxX = Math.max(...xs)
+      const minY = Math.min(...ys)
+      const maxY = Math.max(...ys)
       if (maxX < 0 || minX > viewSize.x || maxY < 0 || minY > viewSize.y) return
 
       ctx.beginPath()
-      ctx.moveTo(nw.x, nw.y)
-      ctx.lineTo(ne.x, ne.y)
-      ctx.lineTo(se.x, se.y)
-      ctx.lineTo(sw.x, sw.y)
+      ctx.moveTo(corners[0].x, corners[0].y)
+      for (let i = 1; i < corners.length; i++) {
+        ctx.lineTo(corners[i].x, corners[i].y)
+      }
       ctx.closePath()
 
-      const key = `${tx}:${ty}`
-      if (!covered.has(key)) {
+      if (!covered.has(cell.key)) {
         ctx.globalAlpha = uncapturedFillOpacity
         ctx.fillStyle = color
         ctx.fill()
@@ -313,27 +315,17 @@ function CoverageGridLayer({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, size.x, size.y)
 
-      const view = map.getBounds()
-      const south = Math.max(view.getSouth(), WARSAW_BBOX.south)
-      const north = Math.min(view.getNorth(), WARSAW_BBOX.north)
-      const west = Math.max(view.getWest(), WARSAW_BBOX.west)
-      const east = Math.min(view.getEast(), WARSAW_BBOX.east)
-      if (south >= north || west >= east) return
-
+      const bounds = map.getBounds()
       const covered = new Set(coveredRef.current)
-      const tyStart = Math.floor((south - WARSAW_BBOX.south) / TILE_SIZE)
-      const tyEnd = Math.ceil((north - WARSAW_BBOX.south) / TILE_SIZE)
-      const txStart = Math.floor((west - WARSAW_BBOX.west) / TILE_SIZE)
-      const txEnd = Math.ceil((east - WARSAW_BBOX.west) / TILE_SIZE)
+      const cells = visibleGridCells({
+        south: bounds.getSouth(),
+        north: bounds.getNorth(),
+        west: bounds.getWest(),
+        east: bounds.getEast(),
+      })
 
-      for (let ty = tyStart; ty <= tyEnd; ty++) {
-        const rowSouth = WARSAW_BBOX.south + ty * TILE_SIZE
-        const rowNorth = rowSouth + TILE_SIZE
-        if (rowNorth < south || rowSouth > north) continue
-
-        for (let tx = txStart; tx <= txEnd; tx++) {
-          drawCell(ctx, tx, ty, covered, size)
-        }
+      for (const cell of cells) {
+        drawCell(ctx, cell, covered, size)
       }
     }
 
@@ -375,6 +367,8 @@ export default function ScenicMap({
   onSelectRoute,
   pastPaths = [],
   returnRoute = null,
+  leaderboardOpen = false,
+  leaderboardEntries = [],
 }: Props) {
   const { resolvedTheme } = useTheme()
   const C = MAP_COLORS[resolvedTheme]
@@ -414,7 +408,13 @@ export default function ScenicMap({
       />
       <MapPickHandler active={mapPickActive} onPick={onMapPick} />
 
-      {showCoverage && (
+      {leaderboardOpen && leaderboardEntries.length > 0 ? (
+        <LeaderboardGridLayer
+          visible
+          entries={leaderboardEntries}
+          lineOpacity={C.gridLine}
+        />
+      ) : showCoverage ? (
         <CoverageGridLayer
           visible
           color={tileColor}
@@ -422,7 +422,7 @@ export default function ScenicMap({
           coveredKeys={coveredTiles}
           uncapturedFillOpacity={C.gridFill}
         />
-      )}
+      ) : null}
 
       <PastPathsLayer paths={pastPaths} theme={resolvedTheme} />
 

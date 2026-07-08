@@ -10,6 +10,9 @@ import { cn } from '@/lib/utils'
 const inputClass =
   'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none ring-ring/50 focus-visible:ring-[3px]'
 
+const textareaClass =
+  'min-h-[4.5rem] w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none ring-ring/50 focus-visible:ring-[3px]'
+
 export function AuthPanel() {
   const { user, loading, register, login } = useAuth()
   const [expanded, setExpanded] = useState(false)
@@ -18,12 +21,13 @@ export function AuthPanel() {
   const [busy, setBusy] = useState(false)
   const [successId, setSuccessId] = useState<string | null>(null)
 
-  const [code, setCode] = useState('')
-  const [loginPin, setLoginPin] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
 
-  const [email, setEmail] = useState('')
-  const [pin, setPin] = useState('')
-  const [pinConfirm, setPinConfirm] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [bio, setBio] = useState('')
+  const [location, setLocation] = useState('')
   const [colorHex, setColorHex] = useState('#2563eb')
 
   if (loading) {
@@ -41,7 +45,7 @@ export function AuthPanel() {
     e.preventDefault()
     setError(null)
     setBusy(true)
-    const result = await login({ code, pin: loginPin })
+    const result = await login({ username, password })
     setBusy(false)
     if (result.error) setError(result.error)
   }
@@ -50,12 +54,19 @@ export function AuthPanel() {
     e.preventDefault()
     setError(null)
     setSuccessId(null)
-    if (pin !== pinConfirm) {
-      setError('PINs do not match')
+    if (password !== passwordConfirm) {
+      setError('Passwords do not match')
       return
     }
     setBusy(true)
-    const result = await register({ email, pin, colorHex })
+    const result = await register({
+      username,
+      password,
+      colorHex,
+      displayName: displayName.trim() || undefined,
+      bio: bio.trim() || undefined,
+      location: location.trim() || undefined,
+    })
     setBusy(false)
     if (result.error) {
       setError(result.error)
@@ -113,44 +124,40 @@ export function AuthPanel() {
 
             {successId ? (
               <p className="mb-3 rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground">
-                Welcome! Your ID is{' '}
-                <span className="font-mono font-semibold">{successId}</span> —
-                save it with your PIN.
+                Welcome, <span className="font-semibold">@{username}</span>! Your
+                rider ID is{' '}
+                <span className="font-mono font-semibold">{successId}</span>.
               </p>
             ) : null}
 
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="flex flex-col gap-3">
                 <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                  Your code
-                  <div className="flex items-center gap-1">
-                    <span className="shrink-0 font-mono text-sm text-muted-foreground">
-                      SCENIC-
-                    </span>
-                    <input
-                      className={inputClass}
-                      value={code}
-                      onChange={(e) =>
-                        setCode(e.target.value.toUpperCase().replace(/\s/g, ''))
-                      }
-                      placeholder="AA0001"
-                      autoComplete="username"
-                      maxLength={6}
-                      required
-                    />
-                  </div>
+                  Username
+                  <input
+                    className={inputClass}
+                    value={username}
+                    onChange={(e) =>
+                      setUsername(
+                        e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+                      )
+                    }
+                    placeholder="your_name"
+                    autoComplete="username"
+                    minLength={3}
+                    maxLength={24}
+                    required
+                  />
                 </label>
                 <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                  PIN
+                  Password
                   <input
                     className={inputClass}
                     type="password"
-                    inputMode="numeric"
-                    pattern="\d{4,6}"
-                    value={loginPin}
-                    onChange={(e) => setLoginPin(e.target.value)}
-                    placeholder="4–6 digits"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
+                    minLength={8}
                     required
                   />
                 </label>
@@ -167,43 +174,88 @@ export function AuthPanel() {
             <TabsContent value="register">
               <form onSubmit={handleRegister} className="flex flex-col gap-3">
                 <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                  Email
+                  Username
                   <input
                     className={inputClass}
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
+                    value={username}
+                    onChange={(e) =>
+                      setUsername(
+                        e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+                      )
+                    }
+                    placeholder="your_name"
+                    autoComplete="username"
+                    minLength={3}
+                    maxLength={24}
+                    required
+                  />
+                  <span className="text-[11px] text-muted-foreground/80">
+                    3–24 characters: letters, numbers, underscore
+                  </span>
+                </label>
+                <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                  Password
+                  <input
+                    className={inputClass}
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
+                    minLength={8}
                     required
                   />
                 </label>
                 <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                  PIN
+                  Confirm password
                   <input
                     className={inputClass}
                     type="password"
-                    inputMode="numeric"
-                    pattern="\d{4,6}"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    placeholder="4–6 digits"
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.target.value)}
                     autoComplete="new-password"
+                    minLength={8}
                     required
                   />
                 </label>
-                <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                  Confirm PIN
-                  <input
-                    className={inputClass}
-                    type="password"
-                    inputMode="numeric"
-                    pattern="\d{4,6}"
-                    value={pinConfirm}
-                    onChange={(e) => setPinConfirm(e.target.value)}
-                    autoComplete="new-password"
-                    required
-                  />
-                </label>
+
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                  <p className="mb-2 text-xs font-medium text-foreground">
+                    Profile (optional)
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      Display name
+                      <input
+                        className={inputClass}
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        maxLength={48}
+                        placeholder="How you want to appear"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      Bio
+                      <textarea
+                        className={textareaClass}
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        maxLength={280}
+                        placeholder="A line about your riding"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      Area / city
+                      <input
+                        className={inputClass}
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        maxLength={80}
+                        placeholder="e.g. Mokotów, Warsaw"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
                   Your color on the map
                   <div className="flex items-center gap-2">
@@ -230,6 +282,10 @@ export function AuthPanel() {
                     'Create account'
                   )}
                 </Button>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Email sign-in may be added later. For now, use your username
+                  and password.
+                </p>
               </form>
             </TabsContent>
           </Tabs>

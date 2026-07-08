@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { LatLng, RouteResponse, ScenicWeights } from '@/lib/types'
-import { PLACES, DEFAULT_WEIGHTS, pickScenic, pickReturnRoute, rankReturnCandidates } from '@/lib/scenic'
+import { PLACES, DEFAULT_WEIGHTS, pickScenic, pickReturnByPreference, rankReturnCandidates, type ReturnPathPreference } from '@/lib/scenic'
 import type { RouteEndpoint } from '@/lib/places'
 import {
   endpointsEqual,
@@ -27,10 +27,15 @@ import { DirectionsPanel } from '@/components/directions-panel'
 import { MapToolbar } from '@/components/map-toolbar'
 import { LocateMeButton } from '@/components/locate-me-button'
 import { AuthPanel } from '@/components/auth-panel'
+import { ProfilePanel } from '@/components/profile-panel'
 import { UserBadge } from '@/components/user-badge'
 import { TripHistoryPanel } from '@/components/trip-history-panel'
 import { useAuth } from '@/components/auth-provider'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { LeaderboardBar } from '@/components/leaderboard-bar'
+import type { LeaderboardEntry } from '@/lib/leaderboard-types'
+import type { WeatherResponse } from '@/lib/weather-types'
+import { WARSAW_CENTER } from '@/lib/geo'
 import { Compass, Loader2, Sparkles } from 'lucide-react'
 
 const ScenicMap = dynamic(() => import('@/components/scenic-map'), {
@@ -85,6 +90,13 @@ export function ScenicApp() {
   const [geoAvailable, setGeoAvailable] = useState(false)
   const [followingUser, setFollowingUser] = useState(false)
   const [geoError, setGeoError] = useState<string | null>(null)
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([])
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false)
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null)
+  const [weather, setWeather] = useState<WeatherResponse | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(false)
+  const [weatherError, setWeatherError] = useState<string | null>(null)
   const startTouchedRef = useRef(false)
   const geoDefaultAppliedRef = useRef(false)
 
@@ -173,9 +185,12 @@ export function ScenicApp() {
   }, [data])
 
   const [manualReturnIndex, setManualReturnIndex] = useState<number | null>(null)
+  const [returnPreference, setReturnPreference] =
+    useState<ReturnPathPreference>('scenic')
 
   useEffect(() => {
     setManualReturnIndex(null)
+    setReturnPreference('scenic')
   }, [returnData])
 
   const chosenIndex = manualChosenIndex ?? autoChosenIndex
@@ -184,14 +199,15 @@ export function ScenicApp() {
 
   const autoReturnIndex = useMemo(() => {
     if (!returnData || !chosen) return 0
-    return pickReturnRoute(
+    return pickReturnByPreference(
       returnData.candidates,
       returnData.directIndex,
       weights,
       budget,
       chosen.coords,
+      returnPreference,
     )
-  }, [returnData, chosen, weights, budget])
+  }, [returnData, chosen, weights, budget, returnPreference])
 
   const returnIndex = manualReturnIndex ?? autoReturnIndex
   const returnLeg = returnData ? returnData.candidates[returnIndex] ?? null : null
@@ -266,6 +282,7 @@ export function ScenicApp() {
     setReturnError(null)
 
     if (returnData) {
+      setReturnPreference('scenic')
       const ranked = rankReturnCandidates(
         returnData.candidates,
         returnData.directIndex,
@@ -320,7 +337,20 @@ export function ScenicApp() {
     setReturnData(null)
     setReturnError(null)
     setManualReturnIndex(null)
+    setReturnPreference('scenic')
   }, [])
+
+  const handleChooseShortestReturn = useCallback(() => {
+    if (!returnData) return
+    setReturnPreference('shortest')
+    setManualReturnIndex(null)
+  }, [returnData])
+
+  const handleChooseLongestReturn = useCallback(() => {
+    if (!returnData) return
+    setReturnPreference('longest')
+    setManualReturnIndex(null)
+  }, [returnData])
 
   const handleSwap = useCallback(() => {
     setStartManual(end)
@@ -470,8 +500,82 @@ export function ScenicApp() {
     return () => clearTimeout(t)
   }, [justAdded])
 
+  const weatherLat = userPosition?.lat ?? start.point.lat ?? WARSAW_CENTER.lat
+  const weatherLng = userPosition?.lng ?? start.point.lng ?? WARSAW_CENTER.lng
+
+  useEffect(() => {
+    if (!leaderboardOpen) return
+    let cancelled = false
+    setLeaderboardLoading(true)
+    setLeaderboardError(null)
+    fetch('/api/leaderboard')
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? 'Could not load leaderboard')
+        if (!cancelled) setLeaderboardEntries(data.entries ?? [])
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setLeaderboardError(
+            e instanceof Error ? e.message : 'Could not load leaderboard',
+          )
+          setLeaderboardEntries([])
+        }
+      })
+      .finally(() => !cancelled && setLeaderboardLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [leaderboardOpen])
+
+  useEffect(() => {
+    if (!leaderboardOpen) return
+    let cancelled = false
+    setWeatherLoading(true)
+    setWeatherError(null)
+    const url = `/api/weather?lat=${weatherLat}&lng=${weatherLng}`
+    fetch(url)
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? 'Could not load weather')
+        if (!cancelled) setWeather(data)
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setWeatherError(
+            e instanceof Error ? e.message : 'Could not load weather',
+          )
+          setWeather(null)
+        }
+      })
+      .finally(() => !cancelled && setWeatherLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [leaderboardOpen, weatherLat, weatherLng])
+
+  const handleToggleLeaderboard = useCallback(() => {
+    setLeaderboardOpen((open) => {
+      const next = !open
+      if (next) setShowCoverage(true)
+      return next
+    })
+  }, [])
+
   return (
-    <main className="flex h-dvh flex-col overflow-hidden bg-background lg:flex-row">
+    <main className="flex h-dvh flex-col overflow-hidden bg-background">
+      <LeaderboardBar
+        open={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+        entries={leaderboardEntries}
+        loading={leaderboardLoading}
+        error={leaderboardError}
+        weather={weather}
+        weatherLoading={weatherLoading}
+        weatherError={weatherError}
+        currentUserId={user?.id}
+      />
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       {/* Control column */}
       <div
         ref={setSidebarEl}
@@ -530,8 +634,11 @@ export function ScenicApp() {
                 chosen={chosen}
                 direct={direct}
                 returnLeg={returnLeg}
+                returnPreference={returnPreference}
                 onFindReturn={handleFindReturn}
                 onClearReturn={handleClearReturn}
+                onChooseShortestReturn={handleChooseShortestReturn}
+                onChooseLongestReturn={handleChooseLongestReturn}
                 returnLoading={returnLoading}
               />
               {returnError ? (
@@ -551,8 +658,11 @@ export function ScenicApp() {
           onReset={handleResetCoverage}
           justAdded={justAdded}
           signedIn={Boolean(user)}
+          onOpenLeaderboard={handleToggleLeaderboard}
+          leaderboardOpen={leaderboardOpen}
         />
 
+        <ProfilePanel />
         <AuthPanel />
 
         {geoError ? (
@@ -614,6 +724,8 @@ export function ScenicApp() {
           onSelectRoute={handleSelectRoute}
           pastPaths={pastPaths}
           returnRoute={returnLeg}
+          leaderboardOpen={leaderboardOpen}
+          leaderboardEntries={leaderboardEntries}
         />
         <DirectionsPanel
           open={directionsOpen}
@@ -627,6 +739,7 @@ export function ScenicApp() {
           distanceToNextM={distanceToNextM}
           hasRoute={Boolean(chosen && directionSteps.length > 0)}
         />
+      </div>
       </div>
     </main>
   )
