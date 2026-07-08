@@ -7,6 +7,7 @@ import { users, type User } from '@/lib/db/schema'
 import { displayUserId, formatUserCode } from '@/lib/user-code'
 import type { PublicUser, SessionData } from '@/lib/auth-types'
 import { colorChangeStatus } from '@/lib/profile'
+import { savedAddressFromRow } from '@/lib/saved-address'
 
 const USERNAME_RE = /^[a-z0-9_]{3,24}$/
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/
@@ -87,6 +88,8 @@ export function toPublicUser(row: User): PublicUser {
     displayName: row.displayName,
     bio: row.bio,
     location: row.location,
+    home: savedAddressFromRow(row.homeName, row.homeLat, row.homeLng),
+    work: savedAddressFromRow(row.workName, row.workLat, row.workLng),
     colorHex: row.colorHex,
     hasAvatar: Boolean(row.avatarMime && row.avatarData),
     avatarVersion: row.avatarData?.length ?? 0,

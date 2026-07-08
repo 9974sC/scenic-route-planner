@@ -17,9 +17,11 @@ import {
 import { outboundBulgeSide } from '@/lib/route-overlap'
 import {
   CYCLING_SPEED_MS,
-  graphHopperCyclingRequestBody,
+  getGraphHopperApiKey,
+  graphHopperAlternativesEnabled,
   graphHopperCyclingUrl,
-  isGraphHopperFlexibleModeError,
+  isGraphHopperAuthError,
+  isGraphHopperQuotaError,
 } from '@/lib/cycling-routing'
 import type { TurnMarker } from '@/lib/types'
 
@@ -38,17 +40,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'start and end required' }, { status: 400 })
   }
 
-  const key = process.env.GRAPHHOPPER_API_KEY
-  try {
-    if (key) {
-      const data = await fetchGraphHopper(start, end, key)
-      return NextResponse.json(data)
-    }
-  } catch (err) {
-    console.log('[v0] GraphHopper failed, using simulated routes:', (err as Error).message)
+  const key = getGraphHopperApiKey()
+  if (!key) {
+    console.warn('[route] GRAPHHOPPER_API_KEY is not configured')
+    return NextResponse.json(
+      simulate(start, end, avoidPath, {
+        routingWarning:
+          'Live routing is off — set GRAPHHOPPER_API_KEY in your deployment environment.',
+      }),
+    )
   }
 
-  return NextResponse.json(simulate(start, end, avoidPath))
+  try {
+    const data = await fetchGraphHopper(start, end, key)
+    return NextResponse.json(data)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn('[route] GraphHopper unavailable, using simulated routes:', message)
+    const routingWarning = isGraphHopperAuthError(message)
+      ? 'GraphHopper rejected the API key — check GRAPHHOPPER_API_KEY on the server.'
+      : isGraphHopperQuotaError(message)
+        ? 'GraphHopper credit limit reached — routes are simulated until the limit resets.'
+        : `GraphHopper error: ${message}`
+    return NextResponse.json(simulate(start, end, avoidPath, { routingWarning }))
+  }
 }
 
 async function fetchGraphHopper(
@@ -56,18 +71,6 @@ async function fetchGraphHopper(
   end: LatLng,
   key: string,
 ): Promise<RouteResponse> {
-  const useFlexible = process.env.GRAPHHOPPER_FLEXIBLE === 'true'
-
-  if (useFlexible) {
-    try {
-      return await fetchGraphHopperPost(start, end, key)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (!isGraphHopperFlexibleModeError(message)) throw err
-      console.log('[route] GraphHopper flexible mode unavailable, using GET bike')
-    }
-  }
-
   return fetchGraphHopperGet(start, end, key)
 }
 
@@ -76,43 +79,65 @@ async function fetchGraphHopperGet(
   end: LatLng,
   key: string,
 ): Promise<RouteResponse> {
-  const res = await fetch(graphHopperCyclingUrl(start, end, key), {
-    cache: 'no-store',
-  })
+  const wantAlternatives = graphHopperAlternativesEnabled()
 
-  if (!res.ok) {
-    const detail = await res.text()
-    throw new Error(
-      `GraphHopper ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`,
-    )
+  if (wantAlternatives) {
+    try {
+      return await requestGraphHopperGet(start, end, key, true)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (isGraphHopperAuthError(message)) throw err
+      console.warn('[route] alternate paths failed, retrying single route:', message)
+    }
   }
 
-  return parseGraphHopperResponse(await res.json())
+  return requestGraphHopperGet(start, end, key, false)
 }
 
-async function fetchGraphHopperPost(
+async function requestGraphHopperGet(
   start: LatLng,
   end: LatLng,
   key: string,
+  alternatives: boolean,
 ): Promise<RouteResponse> {
   const res = await fetch(
-    `https://graphhopper.com/api/1/route?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify(graphHopperCyclingRequestBody(start, end)),
-    },
+    graphHopperCyclingUrl(start, end, key, { alternatives }),
+    { cache: 'no-store' },
   )
 
+  const body = await res.text()
   if (!res.ok) {
-    const detail = await res.text()
     throw new Error(
-      `GraphHopper ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`,
+      `GraphHopper ${res.status}${body ? `: ${body.slice(0, 240)}` : ''}`,
     )
   }
 
-  return parseGraphHopperResponse(await res.json())
+  let json: unknown
+  try {
+    json = JSON.parse(body)
+  } catch {
+    throw new Error('GraphHopper returned invalid JSON')
+  }
+
+  if (
+    json &&
+    typeof json === 'object' &&
+    'message' in json &&
+    typeof (json as { message?: string }).message === 'string'
+  ) {
+    throw new Error((json as { message: string }).message)
+  }
+
+  return parseGraphHopperResponse(
+    json as {
+      paths?: Array<{
+        points?: { coordinates?: number[][] }
+        distance?: number
+        time?: number
+        instructions?: GraphHopperInstruction[]
+      }>
+    },
+  )
 }
 
 function parseGraphHopperResponse(json: {
@@ -124,7 +149,7 @@ function parseGraphHopperResponse(json: {
   }>
 }): RouteResponse {
   const paths: any[] = json.paths ?? []
-  if (!paths.length) throw new Error('no paths')
+  if (!paths.length) throw new Error('GraphHopper returned no paths')
 
   const candidates: RouteCandidate[] = paths.map((p, i) => {
     const raw: number[][] = p.points?.coordinates ?? []
@@ -146,6 +171,7 @@ function simulate(
   start: LatLng,
   end: LatLng,
   avoidPath?: [number, number][],
+  options?: { routingWarning?: string },
 ): RouteResponse {
   const straight = buildPath(start, end, 0, 0, 1)
   const directDist = pathLength(straight)
@@ -182,7 +208,12 @@ function simulate(
   })
 
   const directIndex = indexOfMin(candidates.map((c) => c.duration))
-  return { source: 'simulated', candidates, directIndex }
+  return {
+    source: 'simulated',
+    candidates,
+    directIndex,
+    routingWarning: options?.routingWarning,
+  }
 }
 
 /** create a curved path between two points via perpendicular sine offset */

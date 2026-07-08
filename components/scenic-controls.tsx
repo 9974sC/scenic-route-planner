@@ -15,7 +15,7 @@ import {
 } from '@/lib/scenic'
 import type { LatLng } from '@/lib/types'
 import type { RouteEndpoint } from '@/lib/places'
-import { isLocationEndpoint } from '@/lib/places'
+import { isBlankEndpoint, isHomeEndpoint, isScenicDetourEndpoint, isWorkEndpoint } from '@/lib/places'
 import {
   SCENIC_PREFERENCE_LEVELS,
   indexToPreference,
@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeftRight, Leaf, Waves, Mountain, Clock, Route as RouteIcon, Navigation, ChevronDown } from 'lucide-react'
+import { ArrowLeftRight, Leaf, Waves, Mountain, Clock, Route as RouteIcon, Home, Briefcase, ChevronDown } from 'lucide-react'
 
 type Props = {
   start: RouteEndpoint
@@ -56,7 +56,10 @@ type Props = {
   mapPickTarget?: 'start' | 'end' | null
   onMapPickRequest?: (target: 'start' | 'end') => void
   userPosition?: LatLng | null
-  onRouteToLocation?: () => void
+  onRouteHome?: () => void
+  onRouteWork?: () => void
+  showRouteHome?: boolean
+  showRouteWork?: boolean
 }
 
 function PreferenceSlider({
@@ -132,9 +135,14 @@ export function ScenicControls({
   mapPickTarget,
   onMapPickRequest,
   userPosition = null,
-  onRouteToLocation,
+  onRouteHome,
+  onRouteWork,
+  showRouteHome = false,
+  showRouteWork = false,
 }: Props) {
-  const headingToLocation = isLocationEndpoint(end)
+  const scenicDetourDestination =
+    isScenicDetourEndpoint(end) && (isHomeEndpoint(end) || isWorkEndpoint(end))
+  const swapDisabled = isBlankEndpoint(end)
 
   return (
     <div className="flex flex-col gap-2">
@@ -160,6 +168,7 @@ export function ScenicControls({
             size="icon"
             className="mx-1.5 size-7 shrink-0 rounded-full bg-background shadow-sm transition-transform hover:bg-muted active:scale-95"
             onClick={onSwap}
+            disabled={swapDisabled}
             aria-label="Swap start and destination"
           >
             <ArrowLeftRight className="size-3.5" aria-hidden />
@@ -182,16 +191,29 @@ export function ScenicControls({
         </div>
       </div>
 
-      {userPosition && onRouteToLocation ? (
+      {showRouteHome && onRouteHome ? (
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="w-full"
-          onClick={onRouteToLocation}
+          onClick={onRouteHome}
         >
-          <Navigation className="size-4" aria-hidden />
-          Route to my location (min {MIN_EXTRA_KM_TO_LOCATION} km extra)
+          <Home className="size-4" aria-hidden />
+          Route home
+        </Button>
+      ) : null}
+
+      {showRouteWork && onRouteWork ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onRouteWork}
+        >
+          <Briefcase className="size-4" aria-hidden />
+          Route to work
         </Button>
       ) : null}
 
@@ -223,9 +245,10 @@ export function ScenicControls({
             onPreferences({ ...preferences, viewpoints: v })
           }
         />
-        {headingToLocation ? (
+        {scenicDetourDestination ? (
           <p className="text-[11px] text-muted-foreground">
-            Routes to your location need at least 1 km of extra distance.
+            Routes home or to work use at least {MIN_EXTRA_KM_TO_LOCATION} km of
+            extra distance.
           </p>
         ) : null}
       </div>
@@ -356,8 +379,7 @@ export function ScenicControls({
               </Select>
             </label>
           </div>
-        </details>
-        <label className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
+          <label className="mt-3 flex flex-col gap-1">
             <span className="text-[11px] text-muted-foreground">
               Your avg speed (km/h)
             </span>
@@ -371,9 +393,10 @@ export function ScenicControls({
                 onUserSpeedKmh(clampUserSpeedKmh(Number(e.target.value)))
               }
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-            aria-label="Average cycling speed in kilometers per hour"
-          />
-        </label>
+              aria-label="Average cycling speed in kilometers per hour"
+            />
+          </label>
+        </details>
       </div>
     </div>
   )

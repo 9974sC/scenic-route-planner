@@ -100,6 +100,7 @@ type Props = {
   leaderboardOpen?: boolean
   leaderboardEntries?: LeaderboardEntry[]
   mapFocus?: MapFocusTarget | null
+  hideEndMarker?: boolean
 }
 
 // One controller keeps the map sized to its container and frames the chosen
@@ -288,6 +289,7 @@ export default function ScenicMap({
   leaderboardOpen = false,
   leaderboardEntries = [],
   mapFocus = null,
+  hideEndMarker = false,
 }: Props) {
   const { resolvedTheme } = useTheme()
   const C = MAP_COLORS[resolvedTheme]
@@ -450,6 +452,7 @@ export default function ScenicMap({
         startBg={C.startBg}
         finishBg={C.finishBg}
         hideStart={startIsUserLocation && Boolean(userPosition)}
+        hideEnd={hideEndMarker}
       />
 
       {userPosition ? (

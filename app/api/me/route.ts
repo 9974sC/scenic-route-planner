@@ -13,6 +13,7 @@ import { dbErrorResponse } from '@/lib/db/errors'
 import { tripToSummary } from '@/lib/trips'
 import { savedRouteToSummary } from '@/lib/saved-routes'
 import { normalizeStoredTileKeys } from '@/lib/tile-migration'
+import { savedAddressFromRow, validateSavedAddress } from '@/lib/saved-address'
 import {
   colorChangeStatus,
   validateBio,
@@ -20,6 +21,7 @@ import {
   validateLocation,
   validateAvatarBuffer,
 } from '@/lib/profile'
+import type { SavedAddress } from '@/lib/auth-types'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +29,8 @@ type ProfileBody = {
   displayName?: string
   bio?: string
   location?: string
+  home?: SavedAddress | null
+  work?: SavedAddress | null
 }
 
 type ColorBody = {
@@ -130,6 +134,15 @@ export async function PATCH(req: Request) {
     const location =
       body.location === undefined ? row.location : body.location.trim() || null
 
+    const home =
+      body.home === undefined
+        ? savedAddressFromRow(row.homeName, row.homeLat, row.homeLng)
+        : body.home
+    const work =
+      body.work === undefined
+        ? savedAddressFromRow(row.workName, row.workLat, row.workLng)
+        : body.work
+
     const displayNameErr = displayName
       ? validateDisplayName(displayName)
       : null
@@ -142,11 +155,25 @@ export async function PATCH(req: Request) {
     if (locationErr) {
       return NextResponse.json({ error: locationErr }, { status: 400 })
     }
+    const homeErr = validateSavedAddress(home)
+    if (homeErr) return NextResponse.json({ error: homeErr }, { status: 400 })
+    const workErr = validateSavedAddress(work)
+    if (workErr) return NextResponse.json({ error: workErr }, { status: 400 })
 
     const db = getDb()
     const [updated] = await db
       .update(users)
-      .set({ displayName, bio, location })
+      .set({
+        displayName,
+        bio,
+        location,
+        homeName: home?.name ?? null,
+        homeLat: home?.lat ?? null,
+        homeLng: home?.lng ?? null,
+        workName: work?.name ?? null,
+        workLat: work?.lat ?? null,
+        workLng: work?.lng ?? null,
+      })
       .where(eq(users.id, row.id))
       .returning()
 

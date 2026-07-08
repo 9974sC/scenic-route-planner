@@ -55,4 +55,6 @@ export type RouteResponse = {
   candidates: RouteCandidate[]
   /** index of the fastest/most-direct candidate */
   directIndex: number
+  /** Set when live routing failed and simulated paths were returned instead */
+  routingWarning?: string
 }

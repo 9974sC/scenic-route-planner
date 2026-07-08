@@ -83,7 +83,7 @@ export function AlternateRoutesLayer({
                 color: lineColor,
                 weight: hovered ? 8 : isDirect ? 6 : 5,
                 opacity: hovered ? 0.9 : isDirect ? 0.8 : 0.55,
-                dashArray: isDirect ? '10 8' : undefined,
+                dashArray: '10 8',
                 lineJoin: 'round',
                 lineCap: 'round',
               }}

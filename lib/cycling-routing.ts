@@ -1,45 +1,20 @@
 import type { LatLng } from '@/lib/types'
-import { WARSAW_BBOX } from '@/lib/geo'
 
 /** Typical leisure cycling pace used for simulated ETAs (km/h). */
 export const CYCLING_SPEED_KMH = 20
 
-/** Upper bound for custom-model speed caps and sanity checks. */
-export const CYCLING_SPEED_MAX_KMH = 25
-
 export const CYCLING_SPEED_MS = (CYCLING_SPEED_KMH * 1000) / 3600
 
 /**
- * GraphHopper custom model for paid/flexible plans only.
- * Free API keys reject POST requests that set ch.disable or custom_model.
+ * Standard GraphHopper GET /route with profile=bike.
+ * Works on the free plan (no custom_model or flexible POST).
  */
-export const GRAPHHOPPER_BIKE_CUSTOM_MODEL = {
-  priority: [
-    { if: 'road_class == MOTORWAY', multiply_by: '0' },
-    { if: 'road_class == TRUNK', multiply_by: '0' },
-    { if: 'road_environment == TUNNEL', multiply_by: '0' },
-    { if: 'road_environment == FERRY', multiply_by: '0' },
-    { if: 'road_class == STEPS', multiply_by: '0' },
-    { if: 'road_access == NO', multiply_by: '0' },
-    { if: 'road_access == PRIVATE', multiply_by: '0.05' },
-  ],
-  speed: [
-    {
-      if: 'true',
-      limit_to: String(CYCLING_SPEED_MAX_KMH),
-    },
-  ],
-}
-
-export const GRAPHHOPPER_SNAP_PREVENTIONS = [
-  'motorway',
-  'trunk',
-  'tunnel',
-  'ferry',
-] as const
-
-/** Standard bike routing URL — works on GraphHopper free tier. */
-export function graphHopperCyclingUrl(start: LatLng, end: LatLng, key: string) {
+export function graphHopperCyclingUrl(
+  start: LatLng,
+  end: LatLng,
+  key: string,
+  options?: { alternatives?: boolean },
+) {
   const url = new URL('https://graphhopper.com/api/1/route')
   url.searchParams.set('point', `${start.lat},${start.lng}`)
   url.searchParams.append('point', `${end.lat},${end.lng}`)
@@ -47,37 +22,43 @@ export function graphHopperCyclingUrl(start: LatLng, end: LatLng, key: string) {
   url.searchParams.set('points_encoded', 'false')
   url.searchParams.set('elevation', 'true')
   url.searchParams.set('instructions', 'true')
-  url.searchParams.set('algorithm', 'alternative_route')
-  url.searchParams.set('alternative_route.max_paths', '6')
-  url.searchParams.set('alternative_route.max_weight_factor', '5')
-  url.searchParams.set('alternative_route.max_share_factor', '0.35')
+  if (options?.alternatives !== false) {
+    const maxPaths = graphHopperMaxAlternatives()
+    url.searchParams.set('algorithm', 'alternative_route')
+    url.searchParams.set('alternative_route.max_paths', String(maxPaths))
+    url.searchParams.set('alternative_route.max_weight_factor', '5')
+    url.searchParams.set('alternative_route.max_share_factor', '0.35')
+  }
   url.searchParams.set('key', key)
   return url.toString()
 }
 
-/** Flexible-mode POST body — only for paid GraphHopper plans. */
-export function graphHopperCyclingRequestBody(start: LatLng, end: LatLng) {
-  return {
-    points: [
-      [start.lng, start.lat],
-      [end.lng, end.lat],
-    ],
-    profile: 'bike',
-    points_encoded: false,
-    elevation: true,
-    instructions: true,
-    algorithm: 'alternative_route',
-    'alternative_route.max_paths': 6,
-    'alternative_route.max_weight_factor': 5,
-    'alternative_route.max_share_factor': 0.35,
-    'ch.disable': true,
-    custom_model: GRAPHHOPPER_BIKE_CUSTOM_MODEL,
-    snap_preventions: [...GRAPHHOPPER_SNAP_PREVENTIONS],
-  }
+export function isGraphHopperAuthError(message: string): boolean {
+  return /wrong credentials|invalid.*api key|unauthorized/i.test(message)
 }
 
-export function isGraphHopperFlexibleModeError(message: string): boolean {
-  return /flexible mode/i.test(message)
+export function isGraphHopperQuotaError(message: string): boolean {
+  return /limit|quota|429|too many/i.test(message)
+}
+
+/** Strip whitespace and accidental wrapping quotes from dashboard copy-paste. */
+export function getGraphHopperApiKey(): string | null {
+  const raw = process.env.GRAPHHOPPER_API_KEY?.trim()
+  if (!raw) return null
+  const key = raw.replace(/^['"]|['"]$/g, '').trim()
+  return key || null
+}
+
+/** Default 3 on free tier to conserve daily credits (500/day). */
+export function graphHopperMaxAlternatives(): number {
+  const raw = process.env.GRAPHHOPPER_MAX_ALTERNATIVES?.trim()
+  const n = raw ? Number(raw) : 3
+  if (!Number.isFinite(n)) return 3
+  return Math.max(1, Math.min(6, Math.round(n)))
+}
+
+export function graphHopperAlternativesEnabled(): boolean {
+  return process.env.GRAPHHOPPER_ALTERNATIVES !== 'false'
 }
 
 export function durationFromDistanceM(distanceM: number): number {

@@ -1,5 +1,5 @@
 import type { LatLng, Place } from './types'
-import { haversine } from './geo'
+import { haversine, WARSAW_CENTER } from './geo'
 import { PLACES } from './scenic'
 
 export type RouteEndpoint = Place & { custom?: boolean }
@@ -62,6 +62,26 @@ export function mapPickEndpoint(point: LatLng): RouteEndpoint {
 }
 
 export const LOCATION_ENDPOINT_ID = 'current-location'
+export const BLANK_ENDPOINT_ID = 'blank-destination'
+
+export function defaultStartPreset(): RouteEndpoint {
+  const centralna = presetById('centralna')
+  return centralna ?? PLACES[0]
+}
+
+export function blankEndpoint(): RouteEndpoint {
+  return {
+    id: BLANK_ENDPOINT_ID,
+    name: 'Choose destination',
+    hint: 'Search, pick on map, or select a place',
+    point: WARSAW_CENTER,
+    custom: true,
+  }
+}
+
+export function isBlankEndpoint(endpoint: RouteEndpoint): boolean {
+  return endpoint.id === BLANK_ENDPOINT_ID
+}
 
 export function locationEndpoint(point: LatLng): RouteEndpoint {
   return {
@@ -75,5 +95,53 @@ export function locationEndpoint(point: LatLng): RouteEndpoint {
 
 export function isLocationEndpoint(endpoint: RouteEndpoint): boolean {
   return endpoint.id === LOCATION_ENDPOINT_ID
+}
+
+export const HOME_ENDPOINT_ID = 'saved-home'
+export const WORK_ENDPOINT_ID = 'saved-work'
+
+export function addressPickerPlaceholder(kind: 'home' | 'work'): RouteEndpoint {
+  return {
+    id: `address-unset-${kind}`,
+    name: 'Not set',
+    hint: 'Search or pick on map',
+    point: WARSAW_CENTER,
+    custom: true,
+  }
+}
+
+export function isUnsetAddressPicker(endpoint: RouteEndpoint): boolean {
+  return endpoint.id === 'address-unset-home' || endpoint.id === 'address-unset-work'
+}
+
+export function savedAddressEndpoint(
+  kind: 'home' | 'work',
+  name: string,
+  point: LatLng,
+): RouteEndpoint {
+  return {
+    id: kind === 'home' ? HOME_ENDPOINT_ID : WORK_ENDPOINT_ID,
+    name,
+    hint: kind === 'home' ? 'Home' : 'Work',
+    point,
+    custom: true,
+  }
+}
+
+export function isHomeEndpoint(endpoint: RouteEndpoint): boolean {
+  return endpoint.id === HOME_ENDPOINT_ID
+}
+
+export function isWorkEndpoint(endpoint: RouteEndpoint): boolean {
+  return endpoint.id === WORK_ENDPOINT_ID
+}
+
+/** Destinations that use the scenic detour minimum (home, work, live location). */
+export function isScenicDetourEndpoint(endpoint: RouteEndpoint): boolean {
+  return (
+    isLocationEndpoint(endpoint) ||
+    isHomeEndpoint(endpoint) ||
+    isWorkEndpoint(endpoint)
+  )
 }
 

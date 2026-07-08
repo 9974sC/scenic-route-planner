@@ -13,6 +13,7 @@ type Props = {
   onReset: () => void
   justAdded: number | null
   signedIn?: boolean
+  canRide?: boolean
   onOpenLeaderboard?: () => void
   leaderboardOpen?: boolean
 }
@@ -25,6 +26,7 @@ export function CoveragePanel({
   onReset,
   justAdded,
   signedIn = false,
+  canRide = true,
   onOpenLeaderboard,
   leaderboardOpen = false,
 }: Props) {
@@ -72,8 +74,13 @@ export function CoveragePanel({
 
       <div className="flex flex-col gap-2">
         <div className="flex gap-2">
-          <Button size="sm" className="flex-1" onClick={onAddRoute}>
-            <Plus className="size-4" />
+          <Button
+            size="lg"
+            className="h-12 flex-1 text-base font-semibold"
+            disabled={!canRide}
+            onClick={onAddRoute}
+          >
+            <Plus className="size-5" />
             Ride this route
           </Button>
           <Button

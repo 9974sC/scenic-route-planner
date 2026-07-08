@@ -3,18 +3,26 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { LatLng, RouteResponse } from '@/lib/types'
-import { PLACES, pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, DEFAULT_MAX_EXTRA_KM, DEFAULT_USER_SPEED_KMH, clampUserSpeedKmh, MIN_EXTRA_KM_TO_LOCATION, type ReturnPathPreference, type RoutePickConstraints } from '@/lib/scenic'
+import { pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, DEFAULT_MAX_EXTRA_KM, DEFAULT_USER_SPEED_KMH, clampUserSpeedKmh, MIN_EXTRA_KM_TO_LOCATION, scenicScorePercent, type ReturnPathPreference, type RoutePickConstraints } from '@/lib/scenic'
 import {
   DEFAULT_PREFERENCES,
   preferencesToWeights,
   weightsToPreferences,
 } from '@/lib/scenic-preferences'
 import type { SavedRouteSummary } from '@/lib/saved-routes'
+import {
+  isSavedAddressSet,
+  savedAddressToEndpoint,
+} from '@/lib/saved-address'
 import type { RouteEndpoint } from '@/lib/places'
 import {
   customEndpoint,
+  defaultStartPreset,
+  blankEndpoint,
   endpointsEqual,
+  isBlankEndpoint,
   isLocationEndpoint,
+  isScenicDetourEndpoint,
   locationEndpoint,
   mapPickEndpoint,
 } from '@/lib/places'
@@ -42,6 +50,7 @@ import { TripHistoryPanel } from '@/components/trip-history-panel'
 import { useAuth } from '@/components/auth-provider'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LeaderboardDialog } from '@/components/leaderboard-dialog'
+import { RideCompleteDialog } from '@/components/ride-complete-dialog'
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import type { WeatherResponse } from '@/lib/weather-types'
 import { WARSAW_CENTER } from '@/lib/geo'
@@ -57,18 +66,10 @@ const ScenicMap = dynamic(() => import('@/components/scenic-map'), {
   ),
 })
 
-function defaultStart(): RouteEndpoint {
-  return PLACES.find((p) => p.id === 'oldtown') ?? PLACES[0]
-}
-
-function defaultEnd(): RouteEndpoint {
-  return PLACES.find((p) => p.id === 'kabaty') ?? PLACES[0]
-}
-
 export function ScenicApp() {
   const { user, claimedTiles, trips, refresh } = useAuth()
-  const [start, setStart] = useState<RouteEndpoint>(defaultStart)
-  const [end, setEnd] = useState<RouteEndpoint>(defaultEnd)
+  const [start, setStart] = useState<RouteEndpoint>(defaultStartPreset)
+  const [end, setEnd] = useState<RouteEndpoint>(blankEndpoint)
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES)
   const weights = useMemo(
     () => preferencesToWeights(preferences),
@@ -127,13 +128,18 @@ export function ScenicApp() {
   const [weather, setWeather] = useState<WeatherResponse | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(false)
   const [weatherError, setWeatherError] = useState<string | null>(null)
+  const [rideCompleteOpen, setRideCompleteOpen] = useState(false)
+  const [rideCompletedAt, setRideCompletedAt] = useState<Date | null>(null)
+  const [rideScorePct, setRideScorePct] = useState(0)
+  const [rideTilesAdded, setRideTilesAdded] = useState(0)
   const startTouchedRef = useRef(false)
   const geoDefaultAppliedRef = useRef(false)
 
-  const loopDisabled = endpointsEqual(start, end)
+  const loopDisabled =
+    isBlankEndpoint(end) || endpointsEqual(start, end)
 
   useEffect(() => {
-    if (isLocationEndpoint(end) && minExtraKm < MIN_EXTRA_KM_TO_LOCATION) {
+    if (isScenicDetourEndpoint(end) && minExtraKm < MIN_EXTRA_KM_TO_LOCATION) {
       setMinExtraKm(MIN_EXTRA_KM_TO_LOCATION)
     }
   }, [end, minExtraKm])
@@ -187,7 +193,7 @@ export function ScenicApp() {
 
   // Fetch candidate routes only when the endpoints change (sliders stay instant)
   useEffect(() => {
-    if (endpointsEqual(start, end)) {
+    if (isBlankEndpoint(end) || endpointsEqual(start, end)) {
       setData(null)
       return
     }
@@ -449,6 +455,7 @@ export function ScenicApp() {
   }, [returnData, chosen, data, weights, routeConstraints])
 
   const handleSwap = useCallback(() => {
+    if (isBlankEndpoint(end)) return
     setStartManual(end)
     setEnd(start)
   }, [start, end, setStartManual])
@@ -462,11 +469,17 @@ export function ScenicApp() {
     setStartManual(locationEndpoint(userPosition))
   }, [userPosition, setStartManual])
 
-  const handleRouteToLocation = useCallback(() => {
-    if (!userPosition) return
-    setEnd(locationEndpoint(userPosition))
+  const handleRouteHome = useCallback(() => {
+    if (!user?.home || !isSavedAddressSet(user.home)) return
+    setEnd(savedAddressToEndpoint('home', user.home))
     setMinExtraKm((prev) => Math.max(prev, MIN_EXTRA_KM_TO_LOCATION))
-  }, [userPosition])
+  }, [user?.home])
+
+  const handleRouteWork = useCallback(() => {
+    if (!user?.work || !isSavedAddressSet(user.work)) return
+    setEnd(savedAddressToEndpoint('work', user.work))
+    setMinExtraKm((prev) => Math.max(prev, MIN_EXTRA_KM_TO_LOCATION))
+  }, [user?.work])
 
   const handleLoadSavedRoute = useCallback((route: SavedRouteSummary) => {
     setStart(
@@ -594,11 +607,15 @@ export function ScenicApp() {
 
   const handleAddRoute = useCallback(async () => {
     if (!chosen) return
+    const completedAt = new Date()
+    const scorePct = scenicScorePercent(chosen, weights, returnLeg)
     const loopCoords = returnLeg
       ? joinLoopCoords(chosen.coords, returnLeg.coords)
       : chosen.coords
     const tiles = [...tilesForPath(loopCoords)]
     setSaveError(null)
+
+    let tilesAdded = 0
 
     if (user) {
       try {
@@ -625,10 +642,12 @@ export function ScenicApp() {
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Could not save ride')
-        setJustAdded(data.tilesAdded ?? 0)
+        tilesAdded = data.tilesAdded ?? 0
+        setJustAdded(tilesAdded)
         await refresh()
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : 'Could not save ride')
+        return
       }
     } else {
       setLocalPastPaths((prev) => [
@@ -636,7 +655,7 @@ export function ScenicApp() {
         {
           id: crypto.randomUUID(),
           coords: loopCoords,
-          drivenAt: new Date().toISOString(),
+          drivenAt: completedAt.toISOString(),
         },
       ])
       setLocalCoverage((prev) => {
@@ -648,12 +667,18 @@ export function ScenicApp() {
             added++
           }
         })
+        tilesAdded = added
         setJustAdded(added)
         return next
       })
     }
+
+    setRideCompletedAt(completedAt)
+    setRideScorePct(scorePct)
+    setRideTilesAdded(tilesAdded)
+    setRideCompleteOpen(true)
     setShowCoverage(true)
-  }, [chosen, returnLeg, user, start, end, refresh])
+  }, [chosen, returnLeg, user, start, end, weights, refresh])
 
   const handleResetCoverage = useCallback(async () => {
     setSaveError(null)
@@ -750,6 +775,14 @@ export function ScenicApp() {
         error={leaderboardError}
         currentUserId={user?.id}
       />
+      <RideCompleteDialog
+        open={rideCompleteOpen}
+        onClose={() => setRideCompleteOpen(false)}
+        completedAt={rideCompletedAt}
+        scorePct={rideScorePct}
+        tilesAdded={rideTilesAdded}
+        isRoundTrip={Boolean(returnLeg)}
+      />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       {/* Control column */}
       <div
@@ -793,11 +826,18 @@ export function ScenicApp() {
           mapPickTarget={mapPickTarget}
           onMapPickRequest={handleMapPickRequest}
           userPosition={geoAvailable ? userPosition : null}
-          onRouteToLocation={geoAvailable ? handleRouteToLocation : undefined}
+          onRouteHome={handleRouteHome}
+          onRouteWork={handleRouteWork}
+          showRouteHome={isSavedAddressSet(user?.home)}
+          showRouteWork={isSavedAddressSet(user?.work)}
         />
 
         <div className="rounded-xl border border-border bg-card p-4">
-          {endpointsEqual(start, end) ? (
+          {isBlankEndpoint(end) ? (
+            <p className="text-sm text-muted-foreground">
+              Choose a destination to plot a ride.
+            </p>
+          ) : endpointsEqual(start, end) ? (
             <p className="text-sm text-muted-foreground">
               Pick two different places to plot a ride.
             </p>
@@ -844,6 +884,7 @@ export function ScenicApp() {
           onReset={handleResetCoverage}
           justAdded={justAdded}
           signedIn={Boolean(user)}
+          canRide={Boolean(chosen)}
           onOpenLeaderboard={handleOpenLeaderboard}
           leaderboardOpen={leaderboardOpen}
         />
@@ -867,11 +908,18 @@ export function ScenicApp() {
         <TripHistoryPanel />
 
         {data ? (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Sparkles className="size-3.5 text-accent-foreground" aria-hidden />
-            {data.source === 'graphhopper'
-              ? 'Cycling routes from GraphHopper / OpenStreetMap (no motorways or tunnels)'
-              : 'Simulated cycling routes — add GRAPHHOPPER_API_KEY for live OSM bike routing'}
+          <p
+            className={`flex items-center gap-1.5 text-xs ${
+              data.routingWarning ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'
+            }`}
+            role={data.routingWarning ? 'alert' : undefined}
+          >
+            <Sparkles className="size-3.5 shrink-0 text-accent-foreground" aria-hidden />
+            {data.routingWarning
+              ? data.routingWarning
+              : data.source === 'graphhopper'
+                ? 'Cycling routes from GraphHopper bike profile (OpenStreetMap)'
+                : 'Simulated cycling routes — add GRAPHHOPPER_API_KEY for live OSM bike routing'}
           </p>
         ) : null}
       </div>
@@ -917,6 +965,7 @@ export function ScenicApp() {
           leaderboardOpen={leaderboardOpen}
           leaderboardEntries={leaderboardEntries}
           mapFocus={mapFocus}
+          hideEndMarker={isBlankEndpoint(end)}
         />
         <DirectionsPanel
           open={directionsOpen}

@@ -3,6 +3,7 @@
 import type { WeatherResponse } from '@/lib/weather-types'
 import { WeatherSection } from '@/components/weather-section'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Navigation } from 'lucide-react'
 
 type Props = {
@@ -23,7 +24,14 @@ export function MapToolbar({
   weatherError,
 }: Props) {
   return (
-    <div className="pointer-events-none absolute top-3 right-3 z-[1001] flex w-[11rem] flex-col gap-2">
+    <div
+      className={cn(
+        'pointer-events-none absolute top-3 z-[1001] flex w-[11rem] flex-col gap-2 transition-[right] duration-200',
+        directionsOpen
+          ? 'right-[calc(min(100%,20rem)+0.75rem)]'
+          : 'right-3',
+      )}
+    >
       <Button
         type="button"
         size="lg"

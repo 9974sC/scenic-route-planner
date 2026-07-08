@@ -2,6 +2,12 @@ export type SessionData = {
   userId?: string
 }
 
+export type SavedAddress = {
+  name: string
+  lat: number
+  lng: number
+}
+
 export type PublicUser = {
   id: string
   publicCode: string
@@ -10,6 +16,8 @@ export type PublicUser = {
   displayName: string | null
   bio: string | null
   location: string | null
+  home: SavedAddress | null
+  work: SavedAddress | null
   colorHex: string
   hasAvatar: boolean
   avatarVersion: number
@@ -59,4 +67,6 @@ export type ProfileUpdateInput = {
   displayName?: string
   bio?: string
   location?: string
+  home?: SavedAddress | null
+  work?: SavedAddress | null
 }

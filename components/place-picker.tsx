@@ -17,6 +17,7 @@ import type { LatLng } from '@/lib/types'
 import {
   endpointsEqual,
   filterPresets,
+  isBlankEndpoint,
   isLocationEndpoint,
   locationEndpoint,
   parseCoordinateQuery,
@@ -230,6 +231,7 @@ export function PlacePicker({
   const coordCandidate = parseCoordinateQuery(query)
   const popupRoot =
     menuContainer ?? (typeof document === 'undefined' ? null : document.body)
+  const isBlank = isBlankEndpoint(value)
 
   const popup =
     open && popupRoot
@@ -338,7 +340,12 @@ export function PlacePicker({
             aria-hidden
           />
           <span className="min-w-0 flex-1 leading-none">
-            <span className="block truncate text-sm font-semibold text-foreground">
+            <span
+              className={cn(
+                'block truncate text-sm font-semibold',
+                isBlank ? 'text-muted-foreground' : 'text-foreground',
+              )}
+            >
               {value.name}
             </span>
             <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/75">

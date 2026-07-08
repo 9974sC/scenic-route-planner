@@ -2,8 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/components/auth-provider'
+import { PlacePicker } from '@/components/place-picker'
 import { Button } from '@/components/ui/button'
 import { avatarUrlForUser } from '@/lib/profile'
+import type { RouteEndpoint } from '@/lib/places'
+import { addressPickerPlaceholder, defaultStartPreset } from '@/lib/places'
+import {
+  endpointToSavedAddress,
+  isSavedAddressSet,
+  savedAddressToPickerValue,
+} from '@/lib/saved-address'
 import { fmtDistance, fmtDuration } from '@/lib/scenic'
 import {
   computeLifetimeStats,
@@ -13,6 +21,8 @@ import {
 import {
   ChevronDown,
   Flame,
+  Briefcase,
+  Home,
   Loader2,
   LogOut,
   MapPin,
@@ -76,13 +86,28 @@ export function ProfilePanel() {
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [location, setLocation] = useState('')
+  const [homeEndpoint, setHomeEndpoint] = useState<RouteEndpoint>(
+    savedAddressToPickerValue('home', null),
+  )
+  const [workEndpoint, setWorkEndpoint] = useState<RouteEndpoint>(
+    savedAddressToPickerValue('work', null),
+  )
+  const [addingHome, setAddingHome] = useState(false)
+  const [addingWork, setAddingWork] = useState(false)
   const [colorHex, setColorHex] = useState('#2563eb')
+
+  const homeSaved = isSavedAddressSet(endpointToSavedAddress(homeEndpoint))
+  const workSaved = isSavedAddressSet(endpointToSavedAddress(workEndpoint))
+  const showHomePicker = homeSaved || addingHome
+  const showWorkPicker = workSaved || addingWork
 
   useEffect(() => {
     if (!user) return
     setDisplayName(user.displayName ?? '')
     setBio(user.bio ?? '')
     setLocation(user.location ?? '')
+    setHomeEndpoint(savedAddressToPickerValue('home', user.home))
+    setWorkEndpoint(savedAddressToPickerValue('work', user.work))
     setColorHex(user.colorHex)
   }, [user])
 
@@ -102,11 +127,15 @@ export function ProfilePanel() {
 
   function closeEdit() {
     setEditing(false)
+    setAddingHome(false)
+    setAddingWork(false)
     setError(null)
     setSuccess(null)
     setDisplayName(user!.displayName ?? '')
     setBio(user!.bio ?? '')
     setLocation(user!.location ?? '')
+    setHomeEndpoint(savedAddressToPickerValue('home', user!.home))
+    setWorkEndpoint(savedAddressToPickerValue('work', user!.work))
     setColorHex(user!.colorHex)
   }
 
@@ -130,6 +159,8 @@ export function ProfilePanel() {
       displayName,
       bio,
       location,
+      home: endpointToSavedAddress(homeEndpoint),
+      work: endpointToSavedAddress(workEndpoint),
     })
     setBusy(false)
     if (result.error) {
@@ -235,6 +266,18 @@ export function ProfilePanel() {
                       {user.location}
                     </p>
                   ) : null}
+                  {isSavedAddressSet(user.home) ? (
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Home className="size-3 shrink-0" aria-hidden />
+                      Home: {user.home.name}
+                    </p>
+                  ) : null}
+                  {isSavedAddressSet(user.work) ? (
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Briefcase className="size-3 shrink-0" aria-hidden />
+                      Work: {user.work.name}
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   type="button"
@@ -243,6 +286,8 @@ export function ProfilePanel() {
                   className="h-7 shrink-0 gap-1 px-2 text-xs"
                   onClick={() => {
                     setEditing(true)
+                    setAddingHome(false)
+                    setAddingWork(false)
                     setError(null)
                     setSuccess(null)
                   }}
@@ -418,6 +463,105 @@ export function ProfilePanel() {
                   placeholder="e.g. Mokotów, Warsaw"
                 />
               </label>
+
+              <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/15 p-2.5">
+                  <p className="text-xs font-medium text-foreground">
+                    Saved addresses
+                  </p>
+
+                  {showHomePicker ? (
+                    <div className="flex items-end gap-2">
+                      <div className="min-w-0 flex-1">
+                        <PlacePicker
+                          label="Home"
+                          value={homeEndpoint}
+                          onChange={(endpoint) => {
+                            setHomeEndpoint(endpoint)
+                            if (isSavedAddressSet(endpointToSavedAddress(endpoint))) {
+                              setAddingHome(false)
+                            }
+                          }}
+                          dotClass="bg-primary"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-xs"
+                        onClick={() => {
+                          setHomeEndpoint(addressPickerPlaceholder('home'))
+                          setAddingHome(false)
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="justify-start gap-2"
+                      onClick={() => {
+                        setAddingHome(true)
+                        setHomeEndpoint(defaultStartPreset())
+                      }}
+                    >
+                      <Home className="size-4" aria-hidden />
+                      Add home address
+                    </Button>
+                  )}
+
+                  {showWorkPicker ? (
+                    <div className="flex items-end gap-2">
+                      <div className="min-w-0 flex-1">
+                        <PlacePicker
+                          label="Work"
+                          value={workEndpoint}
+                          onChange={(endpoint) => {
+                            setWorkEndpoint(endpoint)
+                            if (isSavedAddressSet(endpointToSavedAddress(endpoint))) {
+                              setAddingWork(false)
+                            }
+                          }}
+                          dotClass="bg-accent"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-xs"
+                        onClick={() => {
+                          setWorkEndpoint(addressPickerPlaceholder('work'))
+                          setAddingWork(false)
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="justify-start gap-2"
+                      onClick={() => {
+                        setAddingWork(true)
+                        setWorkEndpoint(defaultStartPreset())
+                      }}
+                    >
+                      <Briefcase className="size-4" aria-hidden />
+                      Add work address
+                    </Button>
+                  )}
+
+                  <p className="text-[11px] text-muted-foreground">
+                    Saved addresses unlock Route home and Route to work on the
+                    map.
+                  </p>
+                </div>
 
               <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
                 Map color

@@ -3,6 +3,12 @@ import { clamp01 } from './geo'
 import { pathOverlapRatio } from './route-overlap'
 
 export const PLACES: Place[] = [
+  {
+    id: 'centralna',
+    name: 'Warszawa Centralna',
+    hint: 'Central railway station',
+    point: { lat: 52.2288, lng: 21.0033 },
+  },
   { id: 'oldtown', name: 'Old Town', hint: 'Market Square', point: { lat: 52.2497, lng: 21.0122 } },
   { id: 'lazienki', name: 'Łazienki Park', hint: 'Royal gardens', point: { lat: 52.2149, lng: 21.0356 } },
   { id: 'kabaty', name: 'Kabaty Forest', hint: 'Southern woods', point: { lat: 52.13, lng: 21.07 } },
@@ -168,6 +174,18 @@ export function weightedScenic(
       w.viewpoints * c.viewpoints) /
       total,
   )
+}
+
+/** Whole-number scenic score for a completed ride (0–100). */
+export function scenicScorePercent(
+  chosen: Pick<RouteCandidate, 'greenness' | 'curviness' | 'viewpoints'>,
+  weights: ScenicWeights,
+  returnLeg?: Pick<RouteCandidate, 'greenness' | 'curviness' | 'viewpoints'> | null,
+): number {
+  const outbound = weightedScenic(chosen, weights)
+  if (!returnLeg) return Math.round(outbound * 100)
+  const inbound = weightedScenic(returnLeg, weights)
+  return Math.round(((outbound + inbound) / 2) * 100)
 }
 
 /**
