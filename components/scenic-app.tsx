@@ -100,12 +100,11 @@ export function ScenicApp() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [localCoverage, setLocalCoverage] = useState<Set<string>>(new Set())
   const [localPastPaths, setLocalPastPaths] = useState<PastPath[]>([])
   const coverage = useMemo(() => {
-    if (user) return new Set(normalizeStoredTileKeys(claimedTiles))
-    return localCoverage
-  }, [user, claimedTiles, localCoverage])
+    if (!user) return new Set<string>()
+    return new Set(normalizeStoredTileKeys(claimedTiles))
+  }, [user, claimedTiles])
   const [showCoverage, setShowCoverage] = useState(true)
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -666,19 +665,7 @@ export function ScenicApp() {
           drivenAt: completedAt.toISOString(),
         },
       ])
-      setLocalCoverage((prev) => {
-        const next = new Set(prev)
-        let added = 0
-        tiles.forEach((t) => {
-          if (!next.has(t)) {
-            next.add(t)
-            added++
-          }
-        })
-        tilesAdded = added
-        setJustAdded(added)
-        return next
-      })
+      tilesAdded = 0
     }
 
     setRideCompletedAt(completedAt)
@@ -706,7 +693,7 @@ export function ScenicApp() {
       }
       return
     }
-    setLocalCoverage(new Set())
+    setLocalPastPaths([])
   }, [user, refresh])
 
   useEffect(() => {
@@ -790,6 +777,7 @@ export function ScenicApp() {
         scorePct={rideScorePct}
         tilesAdded={rideTilesAdded}
         isRoundTrip={Boolean(returnLeg)}
+        tilesCounted={Boolean(user)}
       />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       {/* Control column */}
@@ -815,7 +803,7 @@ export function ScenicApp() {
         </header>
 
         <UserBadge />
-        <AuthPanel defaultExpanded />
+        <AuthPanel />
 
         <ScenicControls
           start={start}

@@ -115,14 +115,9 @@ export function CoveragePanel({
         ) : null}
       </div>
       <p className="text-pretty text-xs leading-relaxed text-muted-foreground">
-        Every road you actually ride fills in the grid. Come back to chase the
-        blank squares in your own neighborhood.
-        {!signedIn ? (
-          <>
-            {' '}
-            Sign in to save tiles and trips across devices.
-          </>
-        ) : null}
+        {signedIn
+          ? 'Every road you actually ride fills in the grid. Come back to chase the blank squares in your own neighborhood.'
+          : 'Sign in to claim tiles on the coverage map and appear on the leaderboard. Guests can preview routes and scores only.'}
       </p>
     </div>
   )

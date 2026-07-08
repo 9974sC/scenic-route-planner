@@ -11,6 +11,8 @@ type Props = {
   scorePct: number
   tilesAdded: number
   isRoundTrip?: boolean
+  /** False for guests — tiles are not claimed until signed in. */
+  tilesCounted?: boolean
 }
 
 function fmtCompletedTime(date: Date): string {
@@ -30,6 +32,7 @@ export function RideCompleteDialog({
   scorePct,
   tilesAdded,
   isRoundTrip = false,
+  tilesCounted = true,
 }: Props) {
   if (!open || !completedAt) return null
 
@@ -89,15 +92,22 @@ export function RideCompleteDialog({
               New tiles
             </div>
             <div className="mt-0.5 font-display text-3xl font-semibold tabular-nums text-primary">
-              +{tilesAdded}
+              {tilesCounted ? `+${tilesAdded}` : '—'}
             </div>
+            {!tilesCounted ? (
+              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                Sign in to claim tiles on the map.
+              </p>
+            ) : null}
           </div>
         </div>
 
         <p className="mt-4 text-sm text-muted-foreground">
-          {isRoundTrip
-            ? 'Round-trip route logged on your coverage map.'
-            : 'Route logged on your coverage map.'}
+          {tilesCounted
+            ? isRoundTrip
+              ? 'Round-trip route logged on your coverage map.'
+              : 'Route logged on your coverage map.'
+            : 'Ride scored locally. Sign in to save coverage and compete on the leaderboard.'}
         </p>
 
         <Button type="button" className="mt-4 w-full" onClick={onClose}>
