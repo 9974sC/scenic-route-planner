@@ -11,7 +11,7 @@ export type TripPeriodStats = {
   avgCoveragePct: number
 }
 
-/** Share of the Warsaw grid newly lit by this drive. */
+/** Share of the Warsaw grid newly lit by this ride. */
 export function tripCoveragePct(tilesAdded: string[], gridTotal = totalTiles()): number {
   if (!gridTotal || !tilesAdded.length) return 0
   return (tilesAdded.length / gridTotal) * 100

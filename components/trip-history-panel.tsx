@@ -48,7 +48,7 @@ export function TripHistoryPanel() {
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <MapPin className="size-4 shrink-0 text-primary" aria-hidden />
-          <span className="text-sm font-semibold text-foreground">Past drives</span>
+          <span className="text-sm font-semibold text-foreground">Past rides</span>
         </div>
         <div
           className="flex shrink-0 gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5"

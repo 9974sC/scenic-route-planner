@@ -19,7 +19,6 @@ import {
   buildDirectionSteps,
   distanceToStep,
   findActiveStepIndex,
-  travelBearingAtPosition,
 } from '@/lib/directions'
 import { ScenicControls } from '@/components/scenic-controls'
 import { RouteSummary } from '@/components/route-summary'
@@ -79,7 +78,6 @@ export function ScenicApp() {
     null,
   )
   const [directionsOpen, setDirectionsOpen] = useState(false)
-  const [headingUp, setHeadingUp] = useState(false)
   const [userPosition, setUserPosition] = useState<LatLng | null>(null)
   const [locationAccuracyM, setLocationAccuracyM] = useState<number | null>(
     null,
@@ -251,15 +249,9 @@ export function ScenicApp() {
 
   const navigationPosition = userPosition ?? start.point
 
-  const travelBearing = useMemo(() => {
-    if (!chosen?.coords.length) return 0
-    return travelBearingAtPosition(chosen.coords, navigationPosition)
-  }, [chosen, navigationPosition])
-
   useEffect(() => {
     if (!chosen) {
       setDirectionsOpen(false)
-      setHeadingUp(false)
     }
   }, [chosen])
 
@@ -420,11 +412,11 @@ export function ScenicApp() {
           }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Could not save drive')
+        if (!res.ok) throw new Error(data.error ?? 'Could not save ride')
         setJustAdded(data.tilesAdded ?? 0)
         await refresh()
       } catch (e) {
-        setSaveError(e instanceof Error ? e.message : 'Could not save drive')
+        setSaveError(e instanceof Error ? e.message : 'Could not save ride')
       }
     } else {
       setLocalPastPaths((prev) => [
@@ -523,7 +515,7 @@ export function ScenicApp() {
         <div className="rounded-xl border border-border bg-card p-4">
           {endpointsEqual(start, end) ? (
             <p className="text-sm text-muted-foreground">
-              Pick two different places to plot a drive.
+              Pick two different places to plot a ride.
             </p>
           ) : loading && !chosen ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -581,8 +573,8 @@ export function ScenicApp() {
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Sparkles className="size-3.5 text-accent-foreground" aria-hidden />
             {data.source === 'graphhopper'
-              ? 'Live routes from GraphHopper / OpenStreetMap'
-              : 'Simulated routes — add GRAPHHOPPER_API_KEY for live OSM routing'}
+              ? 'Cycling routes from GraphHopper / OpenStreetMap (no motorways or tunnels)'
+              : 'Simulated cycling routes — add GRAPHHOPPER_API_KEY for live OSM bike routing'}
           </p>
         ) : null}
       </div>
@@ -593,11 +585,6 @@ export function ScenicApp() {
           directionsOpen={directionsOpen}
           onDirectionsToggle={() => setDirectionsOpen((open) => !open)}
           hasDirections={Boolean(chosen && directionSteps.length > 0)}
-          showCoverage={showCoverage}
-          onCoverageToggle={() => setShowCoverage((on) => !on)}
-          headingUp={headingUp}
-          onHeadingToggle={() => setHeadingUp((on) => !on)}
-          canUseHeading={Boolean(chosen?.coords.length)}
           directionsPanelOpen={directionsOpen}
         />
         <LocateMeButton
@@ -615,9 +602,6 @@ export function ScenicApp() {
           showCoverage={showCoverage}
           mapPickActive={mapPickTarget !== null}
           onMapPick={handleMapPick}
-          headingUp={headingUp}
-          travelBearing={travelBearing}
-          headingAnchor={navigationPosition}
           userPosition={userPosition}
           locationAccuracyM={locationAccuracyM}
           followingUserLocation={followingUser}

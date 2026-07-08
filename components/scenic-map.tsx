@@ -10,7 +10,6 @@ import {
   useMapEvents,
 } from 'react-leaflet'
 import type { LatLng, RouteCandidate } from '@/lib/types'
-import type { Map as LeafletMap } from 'leaflet'
 import { WARSAW_BBOX, WARSAW_CENTER, TILE_SIZE } from '@/lib/geo'
 import type { PastPath } from '@/lib/past-paths'
 import { joinLoopCoords } from '@/lib/route-overlap'
@@ -71,9 +70,6 @@ type Props = {
   showCoverage: boolean
   mapPickActive?: boolean
   onMapPick?: (point: LatLng) => void
-  headingUp?: boolean
-  travelBearing?: number
-  headingAnchor?: LatLng | null
   userPosition?: LatLng | null
   locationAccuracyM?: number | null
   followingUserLocation?: boolean
@@ -86,19 +82,6 @@ type Props = {
   returnRoute?: RouteCandidate | null
 }
 
-const ROTATABLE_PANES = [
-  'tilePane',
-  'overlayPane',
-  'shadowPane',
-  'markerPane',
-  'tooltipPane',
-] as const
-
-const FIXED_NORTH_PANE = 'fixedNorthPane'
-
-/** Gap around each grid cell — cells are drawn square and slightly inset. */
-const GRID_CELL_INSET = 0.07
-
 // One controller keeps the map sized to its container and frames the chosen
 // route. Everything runs through a single rAF-guarded routine so invalidateSize
 // never fires synchronously inside the ResizeObserver callback (that synchronous
@@ -107,12 +90,10 @@ const GRID_CELL_INSET = 0.07
 function MapController({
   chosen,
   returnRoute,
-  headingUp,
   followingUser,
 }: {
   chosen: RouteCandidate | null
   returnRoute: RouteCandidate | null
-  headingUp: boolean
   followingUser: boolean
 }) {
   const map = useMap()
@@ -120,8 +101,6 @@ function MapController({
   chosenRef.current = chosen
   const returnRef = useRef(returnRoute)
   returnRef.current = returnRoute
-  const headingUpRef = useRef(headingUp)
-  headingUpRef.current = headingUp
   const followingUserRef = useRef(followingUser)
   followingUserRef.current = followingUser
 
@@ -143,7 +122,7 @@ function MapController({
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         map.invalidateSize({ animate: false })
-        if (headingUpRef.current || followingUserRef.current) return
+        if (followingUserRef.current) return
         const coords = fitCoords()
         if (coords?.length) {
           map.fitBounds(coords, {
@@ -165,9 +144,9 @@ function MapController({
     }
   }, [map, fitCoords])
 
-  // Re-frame whenever the chosen route changes (skip while locked to heading or user).
+  // Re-frame whenever the chosen route changes (skip while following user).
   useEffect(() => {
-    if (headingUp || followingUser) return
+    if (followingUser) return
     const coords = fitCoords()
     if (coords?.length) {
       map.invalidateSize({ animate: false })
@@ -176,7 +155,7 @@ function MapController({
         animate: true,
       })
     }
-  }, [chosen, returnRoute, map, headingUp, followingUser, fitCoords])
+  }, [chosen, returnRoute, map, followingUser, fitCoords])
 
   return null
 }
@@ -247,104 +226,8 @@ function MapPickHandler({
   return null
 }
 
-/** Leaflet pane for grid + coverage — stays north-up when travel direction is on. */
-function FixedNorthPane() {
-  const map = useMap()
-
-  useEffect(() => {
-    if (map.getPane(FIXED_NORTH_PANE)) return
-    map.createPane(FIXED_NORTH_PANE)
-    const pane = map.getPane(FIXED_NORTH_PANE)
-    if (pane) pane.style.zIndex = '350'
-  }, [map])
-
-  return null
-}
-
-function clearPaneRotation(map: LeafletMap) {
-  for (const name of ROTATABLE_PANES) {
-    const el = map.getPane(name) as HTMLElement | undefined
-    if (!el) continue
-    el.style.transform = ''
-    el.style.transformOrigin = ''
-    el.style.transition = ''
-  }
-}
-
-/** Rotate basemap + routes so travel bearing points up; grid stays fixed. */
-function MapHeadingController({
-  enabled,
-  bearingDeg,
-  anchor,
-}: {
-  enabled: boolean
-  bearingDeg: number
-  anchor: LatLng | null
-}) {
-  const map = useMap()
-  const stateRef = useRef({ enabled, bearingDeg, anchor })
-  stateRef.current = { enabled, bearingDeg, anchor }
-  const applyRef = useRef<() => void>(() => {})
-
-  useEffect(() => {
-    const apply = () => {
-      const { enabled, bearingDeg, anchor } = stateRef.current
-      if (!enabled) return
-
-      let origin: string
-      if (anchor) {
-        const pt = map.latLngToContainerPoint([anchor.lat, anchor.lng])
-        origin = `${pt.x}px ${pt.y}px`
-      } else {
-        const size = map.getSize()
-        origin = `${size.x / 2}px ${size.y / 2}px`
-      }
-
-      const transform = `rotate(${-bearingDeg}deg)`
-      for (const name of ROTATABLE_PANES) {
-        const el = map.getPane(name) as HTMLElement | undefined
-        if (!el) continue
-        el.style.transformOrigin = origin
-        el.style.transition = 'transform 0.2s ease-out'
-        el.style.transform = transform
-      }
-    }
-
-    applyRef.current = apply
-
-    const onViewChange = () => {
-      requestAnimationFrame(apply)
-    }
-
-    if (!enabled) {
-      clearPaneRotation(map)
-      return
-    }
-
-    apply()
-    map.on(
-      'move zoom moveend zoomend drag dragend viewreset',
-      onViewChange,
-    )
-
-    return () => {
-      map.off(
-        'move zoom moveend zoomend drag dragend viewreset',
-        onViewChange,
-      )
-      clearPaneRotation(map)
-    }
-  }, [map, enabled])
-
-  useEffect(() => {
-    if (enabled) applyRef.current()
-  }, [enabled, bearingDeg, anchor?.lat, anchor?.lng])
-
-  return null
-}
-
-/** Canvas-drawn coverage grid — north-up, not rotated with travel direction. */
-function SquareGridLayer({
+/** Canvas-drawn coverage grid aligned to geographic tile bounds. */
+function CoverageGridLayer({
   visible,
   color,
   lineOpacity,
@@ -360,11 +243,12 @@ function SquareGridLayer({
   const map = useMap()
   const coveredRef = useRef(coveredKeys)
   coveredRef.current = coveredKeys
+  const redrawRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     if (!visible) return
 
-    const pane = map.getPane(FIXED_NORTH_PANE)
+    const pane = map.getPane('overlayPane')
     if (!pane) return
 
     const canvas = document.createElement('canvas')
@@ -377,6 +261,7 @@ function SquareGridLayer({
       tx: number,
       ty: number,
       covered: Set<string>,
+      viewSize: { x: number; y: number },
     ) => {
       const south = WARSAW_BBOX.south + ty * TILE_SIZE
       const north = south + TILE_SIZE
@@ -392,26 +277,26 @@ function SquareGridLayer({
       const maxX = Math.max(nw.x, ne.x, sw.x, se.x)
       const minY = Math.min(nw.y, ne.y, sw.y, se.y)
       const maxY = Math.max(nw.y, ne.y, sw.y, se.y)
+      if (maxX < 0 || minX > viewSize.x || maxY < 0 || minY > viewSize.y) return
 
-      const w = maxX - minX
-      const h = maxY - minY
-      if (w < 0.5 || h < 0.5) return
-
-      const side = Math.min(w, h) * (1 - GRID_CELL_INSET * 2)
-      const x = (minX + maxX) / 2 - side / 2
-      const y = (minY + maxY) / 2 - side / 2
+      ctx.beginPath()
+      ctx.moveTo(nw.x, nw.y)
+      ctx.lineTo(ne.x, ne.y)
+      ctx.lineTo(se.x, se.y)
+      ctx.lineTo(sw.x, sw.y)
+      ctx.closePath()
 
       const key = `${tx}:${ty}`
       if (!covered.has(key)) {
         ctx.globalAlpha = uncapturedFillOpacity
         ctx.fillStyle = color
-        ctx.fillRect(x, y, side, side)
+        ctx.fill()
       }
 
       ctx.globalAlpha = lineOpacity
       ctx.strokeStyle = color
       ctx.lineWidth = 1
-      ctx.strokeRect(x + 0.5, y + 0.5, side - 1, side - 1)
+      ctx.stroke()
     }
 
     const redraw = () => {
@@ -447,19 +332,25 @@ function SquareGridLayer({
         if (rowNorth < south || rowSouth > north) continue
 
         for (let tx = txStart; tx <= txEnd; tx++) {
-          drawCell(ctx, tx, ty, covered)
+          drawCell(ctx, tx, ty, covered, size)
         }
       }
     }
 
+    redrawRef.current = redraw
     map.on('move zoom resize viewreset', redraw)
     redraw()
 
     return () => {
       map.off('move zoom resize viewreset', redraw)
+      redrawRef.current = () => {}
       canvas.remove()
     }
-  }, [map, visible, color, lineOpacity, uncapturedFillOpacity, coveredKeys])
+  }, [map, visible, color, lineOpacity, uncapturedFillOpacity])
+
+  useEffect(() => {
+    if (visible) redrawRef.current()
+  }, [visible, coveredKeys])
 
   return null
 }
@@ -474,9 +365,6 @@ export default function ScenicMap({
   showCoverage,
   mapPickActive = false,
   onMapPick,
-  headingUp = false,
-  travelBearing = 0,
-  headingAnchor = null,
   userPosition = null,
   locationAccuracyM = null,
   followingUserLocation = false,
@@ -517,7 +405,6 @@ export default function ScenicMap({
       <MapController
         chosen={chosen}
         returnRoute={returnRoute}
-        headingUp={headingUp && Boolean(chosen)}
         followingUser={followingUserLocation}
       />
       <MapLocateController
@@ -525,17 +412,10 @@ export default function ScenicMap({
         position={userPosition}
         onStopFollowing={() => onStopFollowingUser?.()}
       />
-      <FixedNorthPane />
       <MapPickHandler active={mapPickActive} onPick={onMapPick} />
-      <MapHeadingController
-        enabled={headingUp && Boolean(chosen)}
-        bearingDeg={travelBearing}
-        anchor={headingAnchor}
-      />
 
-      {/* Coverage grid — captured tiles stay clear, unexplored tiles are shaded */}
       {showCoverage && (
-        <SquareGridLayer
+        <CoverageGridLayer
           visible
           color={tileColor}
           lineOpacity={C.gridLine}

@@ -69,7 +69,7 @@ export function CoveragePanel({
       <div className="flex gap-2">
         <Button size="sm" className="flex-1" onClick={onAddRoute}>
           <Plus className="size-4" />
-          Drive this route
+          Ride this route
         </Button>
         <Button
           size="sm"
@@ -81,7 +81,7 @@ export function CoveragePanel({
         </Button>
       </div>
       <p className="text-pretty text-xs leading-relaxed text-muted-foreground">
-        Every road you actually drive fills in the grid. Come back to chase the
+        Every road you actually ride fills in the grid. Come back to chase the
         blank squares in your own neighborhood.
         {!signedIn ? (
           <>

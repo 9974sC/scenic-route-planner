@@ -15,6 +15,10 @@ import {
   type GraphHopperInstruction,
 } from '@/lib/turn-markers'
 import { outboundBulgeSide } from '@/lib/route-overlap'
+import {
+  CYCLING_SPEED_MS,
+  graphHopperCyclingRequestBody,
+} from '@/lib/cycling-routing'
 import type { TurnMarker } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -50,21 +54,22 @@ async function fetchGraphHopper(
   end: LatLng,
   key: string,
 ): Promise<RouteResponse> {
-  const url = new URL('https://graphhopper.com/api/1/route')
-  url.searchParams.set('point', `${start.lat},${start.lng}`)
-  url.searchParams.append('point', `${end.lat},${end.lng}`)
-  url.searchParams.set('profile', 'car')
-  url.searchParams.set('points_encoded', 'false')
-  url.searchParams.set('elevation', 'true')
-  url.searchParams.set('instructions', 'true')
-  url.searchParams.set('algorithm', 'alternative_route')
-  url.searchParams.set('alternative_route.max_paths', '6')
-  url.searchParams.set('alternative_route.max_weight_factor', '5')
-  url.searchParams.set('alternative_route.max_share_factor', '0.35')
-  url.searchParams.set('key', key)
+  const res = await fetch(
+    `https://graphhopper.com/api/1/route?key=${encodeURIComponent(key)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify(graphHopperCyclingRequestBody(start, end)),
+    },
+  )
 
-  const res = await fetch(url.toString(), { cache: 'no-store' })
-  if (!res.ok) throw new Error(`GraphHopper ${res.status}`)
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(
+      `GraphHopper ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`,
+    )
+  }
   const json = await res.json()
 
   const paths: any[] = json.paths ?? []
@@ -93,8 +98,7 @@ function simulate(
 ): RouteResponse {
   const straight = buildPath(start, end, 0, 0, 1)
   const directDist = pathLength(straight)
-  // ~40 km/h average city speed
-  const speed = 40000 / 3600
+  const speed = CYCLING_SPEED_MS
 
   const returnSide =
     avoidPath && avoidPath.length > 2

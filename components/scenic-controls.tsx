@@ -121,7 +121,7 @@ export function ScenicControls({
 
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-card/60 p-3">
         <div className="text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase">
-          What makes a good drive today?
+          What makes a good ride today?
         </div>
         <WeightSlider
           icon={<Leaf className="size-3.5 text-primary" aria-hidden />}

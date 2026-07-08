@@ -14,7 +14,7 @@ const bricolage = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: 'Scenic — take the long way home',
   description:
-    'A router that hands you a beautiful drive, then lights up the map with every road you cover.',
+    'A router that hands you a beautiful bike ride, then lights up the map with every road you cover.',
   generator: 'v0.app',
   icons: {
     icon: [
