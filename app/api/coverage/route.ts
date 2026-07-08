@@ -4,7 +4,8 @@ import { getDb } from '@/lib/db'
 import { claimedTiles } from '@/lib/db/schema'
 import { requireUser } from '@/lib/auth'
 import { dbErrorResponse } from '@/lib/db/errors'
-import { isValidNewTileKey } from '@/lib/tile-keys'
+import { normalizeStoredTileKeys } from '@/lib/tile-migration'
+import { tileKeysForSave } from '@/lib/tile-save'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,9 @@ export async function GET() {
       .from(claimedTiles)
       .where(eq(claimedTiles.userId, user.id))
 
-    return NextResponse.json({ tiles: rows.map((r) => r.tileKey) })
+    return NextResponse.json({
+      tiles: normalizeStoredTileKeys(rows.map((r) => r.tileKey)),
+    })
   } catch (err) {
     const dbErr = dbErrorResponse(err, '[coverage GET]')
     if (dbErr) return dbErr
@@ -44,9 +47,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'tileKeys required' }, { status: 400 })
     }
 
-    const valid = tileKeys.filter(
-      (k) => typeof k === 'string' && isValidNewTileKey(k),
-    )
+    const valid = tileKeysForSave(tileKeys)
     if (!valid.length) {
       return NextResponse.json({ error: 'No valid tile keys' }, { status: 400 })
     }

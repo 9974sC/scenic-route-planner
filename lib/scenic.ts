@@ -28,6 +28,12 @@ export const DEFAULT_WEIGHTS: ScenicWeights = {
 /** Maximum extra minutes the scenic picker may spend over the fastest route. */
 export const MAX_SPARE_MINUTES = 180
 
+/** Quick picks for the time-to-spare slider (minutes). */
+export const SPARE_TIME_PRESETS = [
+  { minutes: 30, label: '30 min' },
+  { minutes: 120, label: '2 hr' },
+] as const
+
 /** Default and maximum extra distance (km) for scenic detours. */
 export const DEFAULT_MAX_EXTRA_KM = 100
 export const MAX_EXTRA_KM_LIMIT = 500
@@ -50,7 +56,7 @@ export type RoutePickConstraints = {
 }
 
 export const DEFAULT_ROUTE_CONSTRAINTS: RoutePickConstraints = {
-  budgetMinutes: 20,
+  budgetMinutes: 30,
   minExtraKm: 0,
   maxExtraKm: DEFAULT_MAX_EXTRA_KM,
   userSpeedKmh: DEFAULT_USER_SPEED_KMH,

@@ -12,7 +12,10 @@ import {
 export type Theme = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
-const STORAGE_KEY = 'scenic-theme'
+import {
+  LEGACY_THEME_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+} from '@/lib/brand'
 
 type ThemeContextValue = {
   theme: Theme
@@ -43,9 +46,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
+      const stored =
+        (localStorage.getItem(THEME_STORAGE_KEY) as Theme | null) ??
+        (localStorage.getItem(LEGACY_THEME_STORAGE_KEY) as Theme | null)
       if (stored === 'light' || stored === 'dark' || stored === 'system') {
         setThemeState(stored)
+        if (!localStorage.getItem(THEME_STORAGE_KEY)) {
+          localStorage.setItem(THEME_STORAGE_KEY, stored)
+        }
       }
     } catch {
       // ignore storage errors
@@ -72,7 +80,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next)
     try {
-      localStorage.setItem(STORAGE_KEY, next)
+      localStorage.setItem(THEME_STORAGE_KEY, next)
     } catch {
       // ignore storage errors
     }

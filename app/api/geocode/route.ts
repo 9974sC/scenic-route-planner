@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
+import { HTTP_USER_AGENT } from '@/lib/brand'
 import type { RouteEndpoint } from '@/lib/places'
 import { customEndpoint } from '@/lib/places'
-import { WARSAW_BBOX } from '@/lib/geo'
+import { MAZOWIECKIE_BBOX } from '@/lib/geo'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,13 +35,13 @@ export async function GET(req: Request) {
   url.searchParams.set('limit', '6')
   url.searchParams.set(
     'viewbox',
-    `${WARSAW_BBOX.west},${WARSAW_BBOX.north},${WARSAW_BBOX.east},${WARSAW_BBOX.south}`,
+    `${MAZOWIECKIE_BBOX.west},${MAZOWIECKIE_BBOX.north},${MAZOWIECKIE_BBOX.east},${MAZOWIECKIE_BBOX.south}`,
   )
   url.searchParams.set('bounded', '1')
   url.searchParams.set('countrycodes', 'pl')
 
   const res = await fetch(url.toString(), {
-    headers: { 'User-Agent': 'scenic-route-planner/1.0 (demo app)' },
+    headers: { 'User-Agent': HTTP_USER_AGENT },
     cache: 'no-store',
   })
 

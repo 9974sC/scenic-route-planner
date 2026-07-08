@@ -1,7 +1,9 @@
-/** Prefix for fine-grid tile keys (450 m cells). Legacy keys omit this. */
-export const TILE_KEY_PREFIX = 'v2:'
+/** Prefix for 100 m Mazowieckie grid. v3 = 10 m; v2 = 450 m Warsaw; bare = 900 m legacy. */
+export const TILE_KEY_PREFIX = 'v4:'
 
-export const NEW_TILE_KEY_RE = /^v2:\d+:\d+$/
+export const NEW_TILE_KEY_RE = /^v4:\d+:\d+$/
+export const V3_TILE_KEY_RE = /^v3:\d+:\d+$/
+export const V2_TILE_KEY_RE = /^v2:\d+:\d+$/
 export const LEGACY_TILE_KEY_RE = /^\d+:\d+$/
 
 export function formatTileKey(tx: number, ty: number): string {
@@ -11,9 +13,8 @@ export function formatTileKey(tx: number, ty: number): string {
 export function parseTileKeyCoords(
   key: string,
 ): { tx: number; ty: number } | null {
-  const raw = key.startsWith(TILE_KEY_PREFIX)
-    ? key.slice(TILE_KEY_PREFIX.length)
-    : key
+  if (!key.startsWith(TILE_KEY_PREFIX)) return null
+  const raw = key.slice(TILE_KEY_PREFIX.length)
   const parts = raw.split(':')
   if (parts.length !== 2) return null
   const tx = Number(parts[0])
@@ -27,5 +28,10 @@ export function isValidNewTileKey(key: string): boolean {
 }
 
 export function isValidStoredTileKey(key: string): boolean {
-  return isValidNewTileKey(key) || LEGACY_TILE_KEY_RE.test(key)
+  return (
+    isValidNewTileKey(key) ||
+    V3_TILE_KEY_RE.test(key) ||
+    V2_TILE_KEY_RE.test(key) ||
+    LEGACY_TILE_KEY_RE.test(key)
+  )
 }

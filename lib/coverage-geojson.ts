@@ -1,6 +1,6 @@
 import { cellBoundsForIndex } from '@/lib/coverage-grid'
-import { gridColCount, gridRowCount } from '@/lib/geo'
 import { parseTileKeyCoords } from '@/lib/tile-keys'
+import { normalizeStoredTileKeys } from '@/lib/tile-migration'
 
 export type TilePolygonFeature = {
   type: 'Feature'
@@ -38,20 +38,7 @@ function cellToFeature(
   }
 }
 
-export function buildPlayingFieldGeoJson(): TileFeatureCollection {
-  const features: TilePolygonFeature[] = []
-  const rows = gridRowCount()
-
-  for (let ty = 0; ty < rows; ty++) {
-    const cols = gridColCount(ty)
-    for (let tx = 0; tx < cols; tx++) {
-      features.push(cellToFeature(cellBoundsForIndex(tx, ty)))
-    }
-  }
-
-  return { type: 'FeatureCollection', features }
-}
-
+/** Build GeoJSON only for claimed tile keys (not the full Mazowieckie grid). */
 export function buildCoveredTilesGeoJson(
   keys: string[],
   color?: string,
@@ -59,7 +46,7 @@ export function buildCoveredTilesGeoJson(
   const features: TilePolygonFeature[] = []
   const seen = new Set<string>()
 
-  for (const key of keys) {
+  for (const key of normalizeStoredTileKeys(keys)) {
     if (seen.has(key)) continue
     const parsed = parseTileKeyCoords(key)
     if (!parsed) continue

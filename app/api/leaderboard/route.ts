@@ -22,6 +22,10 @@ export async function GET() {
         userId: claimedTiles.userId,
         tileKey: claimedTiles.tileKey,
         publicCode: users.publicCode,
+        username: users.username,
+        displayName: users.displayName,
+        avatarMime: users.avatarMime,
+        avatarData: users.avatarData,
         colorHex: users.colorHex,
       })
       .from(claimedTiles)
@@ -47,6 +51,10 @@ export async function GET() {
       string,
       {
         publicCode: string
+        username: string
+        displayName: string | null
+        avatarMime: string | null
+        avatarData: string | null
         colorHex: string
         tileKeys: string[]
       }
@@ -57,6 +65,10 @@ export async function GET() {
       if (!bucket) {
         bucket = {
           publicCode: row.publicCode,
+          username: row.username,
+          displayName: row.displayName,
+          avatarMime: row.avatarMime,
+          avatarData: row.avatarData,
           colorHex: row.colorHex,
           tileKeys: [],
         }
@@ -65,17 +77,25 @@ export async function GET() {
       bucket.tileKeys.push(row.tileKey)
     }
 
-    const sorted = [...byUser.entries()].sort(
-      (a, b) => b[1].tileKeys.length - a[1].tileKeys.length,
-    )
+    const ranked = [...byUser.entries()].map(([userId, data]) => ({
+      userId,
+      data,
+      normalizedTileKeys: normalizeStoredTileKeys(data.tileKeys),
+    }))
 
-    const entries: LeaderboardEntry[] = sorted.map(([userId, data], i) => {
+    ranked.sort((a, b) => b.normalizedTileKeys.length - a.normalizedTileKeys.length)
+
+    const entries: LeaderboardEntry[] = ranked.map(({ userId, data, normalizedTileKeys }, i) => {
       const stats = tripByUser.get(userId)
-      const tileCount = data.tileKeys.length
+      const tileCount = normalizedTileKeys.length
       const entry: LeaderboardEntry = {
         rank: i + 1,
         userId,
         displayId: displayUserId(data.publicCode),
+        username: data.username,
+        displayName: data.displayName,
+        hasAvatar: Boolean(data.avatarMime && data.avatarData),
+        avatarVersion: data.avatarData?.length ?? 0,
         colorHex: data.colorHex,
         tileCount,
         coveragePct: gridTotal ? (tileCount / gridTotal) * 100 : 0,
@@ -83,7 +103,7 @@ export async function GET() {
         totalDistanceM: stats?.totalDistanceM ?? 0,
       }
       if (i < MAP_TILE_USER_LIMIT) {
-        entry.tileKeys = normalizeStoredTileKeys(data.tileKeys)
+        entry.tileKeys = normalizedTileKeys
       }
       return entry
     })

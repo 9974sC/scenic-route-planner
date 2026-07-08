@@ -4,8 +4,8 @@ import { getDb } from '@/lib/db'
 import { claimedTiles, trips } from '@/lib/db/schema'
 import { requireUser } from '@/lib/auth'
 import { dbErrorResponse } from '@/lib/db/errors'
-import { isValidNewTileKey } from '@/lib/tile-keys'
 import { parseRouteCoords } from '@/lib/past-paths'
+import { resolveTileKeysForSave } from '@/lib/tile-save'
 import { tripToSummary } from '@/lib/trips'
 
 export const dynamic = 'force-dynamic'
@@ -80,9 +80,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid trip payload' }, { status: 400 })
     }
 
-    const validTiles = tileKeys.filter(
-      (k) => typeof k === 'string' && isValidNewTileKey(k),
-    )
     const routeCoords = parseRouteCoords(rawRouteCoords) ?? [
       [startLat, startLng],
       [endLat, endLng],
@@ -90,6 +87,8 @@ export async function POST(req: Request) {
     if (routeCoords.length > 20_000) {
       return NextResponse.json({ error: 'Route too long to store' }, { status: 400 })
     }
+
+    const validTiles = resolveTileKeysForSave(tileKeys, routeCoords)
 
     const db = getDb()
     let tilesAdded: string[] = []

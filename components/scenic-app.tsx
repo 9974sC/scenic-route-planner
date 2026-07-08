@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { LatLng, RouteResponse } from '@/lib/types'
-import { pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, DEFAULT_MAX_EXTRA_KM, DEFAULT_USER_SPEED_KMH, clampUserSpeedKmh, MIN_EXTRA_KM_TO_LOCATION, scenicScorePercent, type ReturnPathPreference, type RoutePickConstraints } from '@/lib/scenic'
+import { pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, DEFAULT_MAX_EXTRA_KM, DEFAULT_ROUTE_CONSTRAINTS, DEFAULT_USER_SPEED_KMH, clampUserSpeedKmh, MIN_EXTRA_KM_TO_LOCATION, scenicScorePercent, type ReturnPathPreference, type RoutePickConstraints } from '@/lib/scenic'
 import {
   DEFAULT_PREFERENCES,
   preferencesToWeights,
@@ -28,6 +28,7 @@ import {
 } from '@/lib/places'
 import { tilesForPath } from '@/lib/geo'
 import { normalizeStoredTileKeys } from '@/lib/tile-migration'
+import { tileKeysForSave } from '@/lib/tile-save'
 import type { PastPath } from '@/lib/past-paths'
 import { tripToPastPath } from '@/lib/past-paths'
 import { joinLoopCoords } from '@/lib/route-overlap'
@@ -44,6 +45,7 @@ import { DirectionsPanel } from '@/components/directions-panel'
 import { MapToolbar } from '@/components/map-toolbar'
 import { LocateMeButton } from '@/components/locate-me-button'
 import { AuthPanel } from '@/components/auth-panel'
+import { UserBadge } from '@/components/user-badge'
 import { ProfilePanel } from '@/components/profile-panel'
 import { SavedRoutesPanel } from '@/components/saved-routes-panel'
 import { TripHistoryPanel } from '@/components/trip-history-panel'
@@ -53,6 +55,7 @@ import { LeaderboardDialog } from '@/components/leaderboard-dialog'
 import { RideCompleteDialog } from '@/components/ride-complete-dialog'
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import type { WeatherResponse } from '@/lib/weather-types'
+import { APP_NAME, APP_TAGLINE } from '@/lib/brand'
 import { WARSAW_CENTER } from '@/lib/geo'
 import { Compass, Loader2, Sparkles } from 'lucide-react'
 import type { MapFocusTarget } from '@/components/scenic-map'
@@ -75,7 +78,7 @@ export function ScenicApp() {
     () => preferencesToWeights(preferences),
     [preferences],
   )
-  const [budget, setBudget] = useState(20)
+  const [budget, setBudget] = useState(DEFAULT_ROUTE_CONSTRAINTS.budgetMinutes)
   const [minExtraKm, setMinExtraKm] = useState(0)
   const [maxExtraKm, setMaxExtraKm] = useState(DEFAULT_MAX_EXTRA_KM)
   const [userSpeedKmh, setUserSpeedKmh] = useState(DEFAULT_USER_SPEED_KMH)
@@ -103,7 +106,7 @@ export function ScenicApp() {
     if (user) return new Set(normalizeStoredTileKeys(claimedTiles))
     return localCoverage
   }, [user, claimedTiles, localCoverage])
-  const [showCoverage, setShowCoverage] = useState(false)
+  const [showCoverage, setShowCoverage] = useState(true)
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveRouteLoading, setSaveRouteLoading] = useState(false)
@@ -469,6 +472,11 @@ export function ScenicApp() {
     setStartManual(locationEndpoint(userPosition))
   }, [userPosition, setStartManual])
 
+  const handleRouteFromLocation = useCallback(() => {
+    if (!userPosition) return
+    setStartManual(locationEndpoint(userPosition))
+  }, [userPosition, setStartManual])
+
   const handleRouteHome = useCallback(() => {
     if (!user?.home || !isSavedAddressSet(user.home)) return
     setEnd(savedAddressToEndpoint('home', user.home))
@@ -612,7 +620,7 @@ export function ScenicApp() {
     const loopCoords = returnLeg
       ? joinLoopCoords(chosen.coords, returnLeg.coords)
       : chosen.coords
-    const tiles = [...tilesForPath(loopCoords)]
+    const tiles = tileKeysForSave([...tilesForPath(loopCoords)])
     setSaveError(null)
 
     let tilesAdded = 0
@@ -796,15 +804,18 @@ export function ScenicApp() {
             </div>
             <div className="min-w-0">
               <h1 className="font-display text-lg font-semibold leading-none text-foreground">
-                Scenic
+                {APP_NAME}
               </h1>
               <p className="text-xs text-muted-foreground">
-                take the long way home
+                {APP_TAGLINE}
               </p>
             </div>
           </div>
           <ThemeToggle />
         </header>
+
+        <UserBadge />
+        <AuthPanel defaultExpanded />
 
         <ScenicControls
           start={start}
@@ -826,6 +837,9 @@ export function ScenicApp() {
           mapPickTarget={mapPickTarget}
           onMapPickRequest={handleMapPickRequest}
           userPosition={geoAvailable ? userPosition : null}
+          onRouteFromLocation={
+            geoAvailable && userPosition ? handleRouteFromLocation : undefined
+          }
           onRouteHome={handleRouteHome}
           onRouteWork={handleRouteWork}
           showRouteHome={isSavedAddressSet(user?.home)}
@@ -891,7 +905,6 @@ export function ScenicApp() {
 
         <ProfilePanel />
         <SavedRoutesPanel onLoadRoute={handleLoadSavedRoute} />
-        <AuthPanel />
 
         {geoError ? (
           <p className="text-sm text-destructive" role="alert">

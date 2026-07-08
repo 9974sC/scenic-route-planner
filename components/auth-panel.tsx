@@ -13,9 +13,9 @@ const inputClass =
 const textareaClass =
   'min-h-[4.5rem] w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none ring-ring/50 focus-visible:ring-[3px]'
 
-export function AuthPanel() {
+export function AuthPanel({ defaultExpanded = false }: { defaultExpanded?: boolean }) {
   const { user, loading, register, login } = useAuth()
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(defaultExpanded)
   const [tab, setTab] = useState<'login' | 'register'>('login')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)

@@ -18,6 +18,7 @@ type Props = {
   route: RouteCandidate
   reference: RouteCandidate
   userSpeedKmh: number
+  showSelectHint?: boolean
 }
 
 function DeltaLine({
@@ -43,6 +44,7 @@ export function RoutePreviewTooltip({
   route,
   reference,
   userSpeedKmh,
+  showSelectHint = true,
 }: Props) {
   const routeSec = adjustedDuration(route, userSpeedKmh)
   const referenceSec = adjustedDuration(reference, userSpeedKmh)
@@ -90,7 +92,9 @@ export function RoutePreviewTooltip({
         <span>Curves {Math.round(route.curviness * 100)}%</span>
         <span>Views {Math.round(route.viewpoints * 100)}%</span>
       </div>
-      <p className="text-[10px] text-muted-foreground/80">Click to select this route</p>
+      {showSelectHint ? (
+        <p className="text-[10px] text-muted-foreground/80">Click to select this route</p>
+      ) : null}
     </div>
   )
 }

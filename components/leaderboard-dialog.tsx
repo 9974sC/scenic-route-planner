@@ -3,6 +3,7 @@
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import { fmtDistance } from '@/lib/scenic'
 import { fmtCoveragePct } from '@/lib/trip-stats'
+import { LeaderboardUserAvatar } from '@/components/leaderboard-user-avatar'
 import { Button } from '@/components/ui/button'
 import { Loader2, Trophy, X } from 'lucide-react'
 
@@ -58,11 +59,6 @@ export function LeaderboardDialog({
         </div>
 
         <div className="overflow-y-auto px-4 py-3">
-          <p className="mb-3 text-xs text-muted-foreground">
-            The dashed coverage grid appears on the map. Top riders&apos; tiles
-            are filled with their map colors.
-          </p>
-
           {loading ? (
             <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -85,10 +81,12 @@ export function LeaderboardDialog({
                       : 'border-border/70 bg-muted/25'
                   }`}
                 >
-                  <span
-                    className="mt-0.5 size-3 shrink-0 rounded-full ring-1 ring-black/10"
-                    style={{ backgroundColor: entry.colorHex }}
-                    aria-hidden
+                  <LeaderboardUserAvatar
+                    userId={entry.userId}
+                    username={entry.username}
+                    colorHex={entry.colorHex}
+                    hasAvatar={entry.hasAvatar}
+                    avatarVersion={entry.avatarVersion}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -96,9 +94,12 @@ export function LeaderboardDialog({
                         #{entry.rank}
                       </span>
                       <span className="font-medium text-foreground">
-                        {entry.displayId}
+                        {entry.displayName || entry.username}
                       </span>
                     </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      @{entry.username} · {entry.displayId}
+                    </p>
                     <div className="mt-0.5 tabular-nums text-xs text-muted-foreground">
                       {fmtCoveragePct(entry.coveragePct)} ·{' '}
                       {entry.tileCount.toLocaleString()} tiles · {entry.tripCount}{' '}

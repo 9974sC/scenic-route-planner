@@ -30,31 +30,31 @@ export function WeatherSection({ weather, loading, error }: Props) {
   const hours = weather?.hours.slice(0, WEATHER_HOURS_EXTENDED) ?? []
 
   return (
-    <div className="px-2.5 py-2.5">
-      <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-        <CloudRain className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+    <div className="px-3 py-3">
+      <div className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+        <CloudRain className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         Weather — next {WEATHER_HOURS_EXTENDED} hours
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" />
+        <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
           Loading…
         </div>
       ) : error ? (
-        <p className="text-xs text-muted-foreground">{error}</p>
+        <p className="text-sm text-muted-foreground">{error}</p>
       ) : weather ? (
         <div className="flex flex-col gap-1.5">
-          <div className="flex flex-col gap-0.5 border-b border-border/60 pb-1.5 text-[11px]">
+          <div className="flex flex-col gap-0.5 border-b border-border/60 pb-1.5 text-xs">
             <span
               className={`inline-flex items-center gap-1 font-medium ${wetnessColor(weather.roadWetness)}`}
             >
-              <Droplets className="size-3 shrink-0" aria-hidden />
+              <Droplets className="size-3.5 shrink-0" aria-hidden />
               {weather.roadWetnessLabel}
             </span>
             {weather.hours[0] ? (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Wind className="size-3 shrink-0" aria-hidden />
+                <Wind className="size-3.5 shrink-0" aria-hidden />
                 {weather.hours[0].windKmh} km/h {weather.hours[0].windLabel}
               </span>
             ) : null}
@@ -64,7 +64,7 @@ export function WeatherSection({ weather, loading, error }: Props) {
             {hours.map((hour) => (
               <li
                 key={hour.time}
-                className="rounded-md border border-border/60 bg-background/80 px-2 py-1 text-[10px] leading-snug"
+                className="rounded-md border border-border/60 bg-background/80 px-2 py-1.5 text-[11px] leading-snug"
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="shrink-0 font-medium text-foreground">

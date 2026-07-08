@@ -26,10 +26,10 @@ export function MapToolbar({
   return (
     <div
       className={cn(
-        'pointer-events-none absolute top-3 z-[1001] flex w-[11rem] flex-col gap-2 transition-[right] duration-200',
+        'pointer-events-none absolute top-3 z-[1001] flex w-[12rem] flex-col gap-2 transition-[right] duration-200',
         directionsOpen
-          ? 'right-[calc(min(100%,20rem)+0.75rem)]'
-          : 'right-3',
+          ? 'right-[calc(min(100%,20rem)+1rem)]'
+          : 'right-4',
       )}
     >
       <Button

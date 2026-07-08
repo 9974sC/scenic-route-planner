@@ -12,6 +12,7 @@ import {
   fmtExtraKmLabel,
   fmtSpareMinutes,
   MIN_EXTRA_KM_TO_LOCATION,
+  SPARE_TIME_PRESETS,
 } from '@/lib/scenic'
 import type { LatLng } from '@/lib/types'
 import type { RouteEndpoint } from '@/lib/places'
@@ -27,6 +28,7 @@ import {
 import { PlacePicker } from '@/components/place-picker'
 import { Slider } from '@/components/ui/slider'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -34,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeftRight, Leaf, Waves, Mountain, Clock, Route as RouteIcon, Home, Briefcase, ChevronDown } from 'lucide-react'
+import { ArrowLeftRight, Leaf, Waves, Mountain, Clock, Route as RouteIcon, Home, Briefcase, ChevronDown, Navigation } from 'lucide-react'
 
 type Props = {
   start: RouteEndpoint
@@ -56,6 +58,7 @@ type Props = {
   mapPickTarget?: 'start' | 'end' | null
   onMapPickRequest?: (target: 'start' | 'end') => void
   userPosition?: LatLng | null
+  onRouteFromLocation?: () => void
   onRouteHome?: () => void
   onRouteWork?: () => void
   showRouteHome?: boolean
@@ -135,6 +138,7 @@ export function ScenicControls({
   mapPickTarget,
   onMapPickRequest,
   userPosition = null,
+  onRouteFromLocation,
   onRouteHome,
   onRouteWork,
   showRouteHome = false,
@@ -147,38 +151,43 @@ export function ScenicControls({
   return (
     <div className="flex flex-col gap-2">
       <div className="rounded-xl border border-border bg-card p-2 shadow-sm">
-        <PlacePicker
-          label="From"
-          value={start}
-          onChange={onStart}
-          dotClass="bg-primary"
-          menuContainer={menuContainer}
-          mapPickActive={mapPickTarget === 'start'}
-          onMapPickRequest={
-            onMapPickRequest ? () => onMapPickRequest('start') : undefined
-          }
-          userPosition={userPosition}
-        />
+        <div className="flex flex-col gap-1">
+          <PlacePicker
+            label="From"
+            inlineLabel
+            value={start}
+            onChange={onStart}
+            dotClass="bg-primary"
+            menuContainer={menuContainer}
+            mapPickActive={mapPickTarget === 'start'}
+            onMapPickRequest={
+              onMapPickRequest ? () => onMapPickRequest('start') : undefined
+            }
+            userPosition={userPosition}
+          />
 
-        <div className="relative z-10 flex items-center py-0.5">
-          <div className="h-px flex-1 bg-border" aria-hidden />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="mx-1.5 size-7 shrink-0 rounded-full bg-background shadow-sm transition-transform hover:bg-muted active:scale-95"
-            onClick={onSwap}
-            disabled={swapDisabled}
-            aria-label="Swap start and destination"
-          >
-            <ArrowLeftRight className="size-3.5" aria-hidden />
-          </Button>
-          <div className="h-px flex-1 bg-border" aria-hidden />
-        </div>
+          <div className="relative z-10 flex items-center py-0.5">
+            <div className="w-9 shrink-0" aria-hidden />
+            <div className="flex min-w-0 flex-1 items-center">
+              <div className="h-px flex-1 bg-border" aria-hidden />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="mx-1 size-6 shrink-0 rounded-full bg-background shadow-sm transition-transform hover:bg-muted active:scale-95"
+                onClick={onSwap}
+                disabled={swapDisabled}
+                aria-label="Swap start and destination"
+              >
+                <ArrowLeftRight className="size-3" aria-hidden />
+              </Button>
+              <div className="h-px flex-1 bg-border" aria-hidden />
+            </div>
+          </div>
 
-        <div className="-mt-1.5">
           <PlacePicker
             label="To"
+            inlineLabel
             value={end}
             onChange={onEnd}
             dotClass="bg-accent"
@@ -187,9 +196,23 @@ export function ScenicControls({
             onMapPickRequest={
               onMapPickRequest ? () => onMapPickRequest('end') : undefined
             }
+            userPosition={userPosition}
           />
         </div>
       </div>
+
+      {userPosition && onRouteFromLocation ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onRouteFromLocation}
+        >
+          <Navigation className="size-4" aria-hidden />
+          Route from my location
+        </Button>
+      ) : null}
 
       {showRouteHome && onRouteHome ? (
         <Button
@@ -298,15 +321,22 @@ export function ScenicControls({
         </div>
 
         <div className="mt-3 flex flex-col gap-2">
-          <Slider
-            className="[&_[data-slot=slider-range]]:bg-time"
-            value={[budget]}
-            min={0}
-            max={MAX_SPARE_MINUTES}
-            step={5}
-            onValueChange={(v) => onBudget(Array.isArray(v) ? v[0] : v)}
-            aria-label="Time to spare in minutes"
-          />
+          <div className="relative">
+            <Slider
+              className="[&_[data-slot=slider-range]]:bg-time"
+              value={[budget]}
+              min={0}
+              max={MAX_SPARE_MINUTES}
+              step={5}
+              marks={SPARE_TIME_PRESETS.map((preset) => ({
+                value: preset.minutes,
+                label: preset.label,
+              }))}
+              onMarkClick={onBudget}
+              onValueChange={(v) => onBudget(Array.isArray(v) ? v[0] : v)}
+              aria-label="Time to spare in minutes"
+            />
+          </div>
           <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
             <span>Fastest way</span>
             <span>{fmtSpareMinutes(MAX_SPARE_MINUTES).replace(/^\+/, 'Up to +')}</span>

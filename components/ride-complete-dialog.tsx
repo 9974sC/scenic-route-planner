@@ -1,5 +1,6 @@
 'use client'
 
+import { APP_NAME } from '@/lib/brand'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, X } from 'lucide-react'
 
@@ -77,7 +78,7 @@ export function RideCompleteDialog({
         <div className="mt-5 grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
             <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
-              Scenic score
+              {APP_NAME} score
             </div>
             <div className="mt-0.5 font-display text-3xl font-semibold tabular-nums text-foreground">
               {scorePct}

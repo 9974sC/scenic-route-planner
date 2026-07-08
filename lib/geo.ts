@@ -6,32 +6,37 @@ export { isValidNewTileKey, isValidStoredTileKey } from './tile-keys'
 
 export const WARSAW_CENTER: LatLng = { lat: 52.2297, lng: 21.0122 }
 
-/** Warsaw playing-field bounding box for the coverage grid */
-export const WARSAW_BBOX = {
-  south: 52.09,
-  north: 52.37,
-  west: 20.82,
-  east: 21.27,
-}
+/** Mazowieckie voivodeship — coverage playing field (approx. admin bounds). */
+export const MAZOWIECKIE_BBOX = {
+  south: 51.05,
+  north: 53.45,
+  west: 19.3,
+  east: 23.1,
+} as const
 
-/** Fixed geographic origin for the Warsaw coverage grid (south-west corner). */
+/** @deprecated Use MAZOWIECKIE_BBOX */
+export const WARSAW_BBOX = MAZOWIECKIE_BBOX
+
+export const COVERAGE_BBOX = MAZOWIECKIE_BBOX
+
+/** Fixed geographic origin for the coverage grid (south-west corner). */
 export const COVERAGE_GRID_ORIGIN: LatLng = {
-  lat: WARSAW_BBOX.south,
-  lng: WARSAW_BBOX.west,
+  lat: COVERAGE_BBOX.south,
+  lng: COVERAGE_BBOX.west,
 }
 
 /** Ground size of each coverage cell — square on the map (meters). */
-export const TILE_SIZE_M = 450
+export const TILE_SIZE_M = 100
 
 const R = 6371000 // earth radius meters
 const METERS_PER_DEG_LAT = (2 * Math.PI * R) / 360
 
-function warsawGroundExtents() {
-  const centerLat = (WARSAW_BBOX.north + WARSAW_BBOX.south) / 2
+function regionGroundExtents() {
+  const centerLat = (COVERAGE_BBOX.north + COVERAGE_BBOX.south) / 2
   const heightM =
-    (WARSAW_BBOX.north - WARSAW_BBOX.south) * METERS_PER_DEG_LAT
+    (COVERAGE_BBOX.north - COVERAGE_BBOX.south) * METERS_PER_DEG_LAT
   const widthM =
-    (WARSAW_BBOX.east - WARSAW_BBOX.west) *
+    (COVERAGE_BBOX.east - COVERAGE_BBOX.west) *
     METERS_PER_DEG_LAT *
     Math.cos(toRad(centerLat))
   return { heightM, widthM, centerLat }
@@ -39,14 +44,14 @@ function warsawGroundExtents() {
 
 /** Row count to cover the full playing-field height. */
 export function gridRowCount(): number {
-  const { heightM } = warsawGroundExtents()
+  const { heightM } = regionGroundExtents()
   return Math.max(1, Math.ceil(heightM / TILE_SIZE_M))
 }
 
 /** Column count for a row (square ground cells; lng span varies by latitude). */
 export function gridColCount(ty: number): number {
   const lngStep = tileLngStep(ty)
-  const widthDeg = WARSAW_BBOX.east - WARSAW_BBOX.west
+  const widthDeg = COVERAGE_BBOX.east - COVERAGE_BBOX.west
   return Math.max(1, Math.ceil(widthDeg / lngStep))
 }
 
@@ -69,7 +74,7 @@ export function tileLatStep(): number {
 }
 
 export function rowCenterLat(ty: number): number {
-  return WARSAW_BBOX.south + (ty + 0.5) * tileLatStep()
+  return COVERAGE_BBOX.south + (ty + 0.5) * tileLatStep()
 }
 
 /** Longitude span for a square cell at grid row ty. */
@@ -254,11 +259,11 @@ export function hash01(seed: string): number {
 /** key for the square coverage tile that contains a point */
 export function tileKey(lat: number, lng: number): string {
   const latStep = tileLatStep()
-  let ty = Math.floor((lat - WARSAW_BBOX.south) / latStep)
+  let ty = Math.floor((lat - COVERAGE_BBOX.south) / latStep)
   ty = Math.max(0, Math.min(gridRowCount() - 1, ty))
 
   const lngStep = tileLngStep(ty)
-  let tx = Math.floor((lng - WARSAW_BBOX.west) / lngStep)
+  let tx = Math.floor((lng - COVERAGE_BBOX.west) / lngStep)
   tx = Math.max(0, Math.min(gridColCount(ty) - 1, tx))
 
   return formatTileKey(tx, ty)
@@ -292,11 +297,11 @@ export function tileBounds(key: string): [[number, number], [number, number]] {
     throw new Error(`Invalid tile key: ${key}`)
   }
   const latStep = tileLatStep()
-  const south = WARSAW_BBOX.south + parsed.ty * latStep
-  const north = Math.min(south + latStep, WARSAW_BBOX.north)
+  const south = COVERAGE_BBOX.south + parsed.ty * latStep
+  const north = Math.min(south + latStep, COVERAGE_BBOX.north)
   const lngStep = tileLngStep(parsed.ty)
-  const west = WARSAW_BBOX.west + parsed.tx * lngStep
-  const east = Math.min(west + lngStep, WARSAW_BBOX.east)
+  const west = COVERAGE_BBOX.west + parsed.tx * lngStep
+  const east = Math.min(west + lngStep, COVERAGE_BBOX.east)
   return [
     [south, west],
     [north, east],

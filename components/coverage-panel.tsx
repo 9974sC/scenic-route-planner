@@ -33,6 +33,15 @@ export function CoveragePanel({
   const total = totalTiles()
   const pct = total ? (coverageCount / total) * 100 : 0
 
+  const pctLabel =
+    pct === 0
+      ? '0%'
+      : pct < 0.01
+        ? '<0.01%'
+        : pct < 1
+          ? `${pct.toFixed(2)}%`
+          : `${pct.toFixed(1)}%`
+
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
@@ -51,7 +60,7 @@ export function CoveragePanel({
       <div className="flex items-end justify-between">
         <div>
           <div className="font-display text-3xl font-semibold tabular-nums text-foreground">
-            {pct.toFixed(1)}%
+            {pctLabel}
           </div>
           <div className="text-xs text-muted-foreground">
             {coverageCount.toLocaleString()} of {total.toLocaleString()} tiles
@@ -68,7 +77,7 @@ export function CoveragePanel({
       <div className="h-2 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full rounded-full bg-primary transition-all duration-700"
-          style={{ width: `${Math.min(100, Math.max(pct, 1.5))}%` }}
+          style={{ width: `${Math.min(100, pct)}%` }}
         />
       </div>
 

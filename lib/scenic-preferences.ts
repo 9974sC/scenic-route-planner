@@ -9,7 +9,7 @@ export type ScenicPreferenceSet = {
 }
 
 export const DEFAULT_PREFERENCES: ScenicPreferenceSet = {
-  greenness: 'yes',
+  greenness: 'idc',
   curviness: 'idc',
   viewpoints: 'idc',
 }

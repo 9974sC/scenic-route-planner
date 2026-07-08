@@ -14,6 +14,7 @@ import { WARSAW_CENTER } from '@/lib/geo'
 import type { PastPath } from '@/lib/past-paths'
 import { joinLoopCoords } from '@/lib/route-overlap'
 import { AlternateRoutesLayer, type AlternateRoute } from '@/components/alternate-routes-layer'
+import { SelectedRouteLayer } from '@/components/selected-route-layer'
 import { PastPathsLayer } from '@/components/past-paths-layer'
 import { TurnMarkersLayer } from '@/components/turn-markers-layer'
 import { RouteEndpointMarkers } from '@/components/route-endpoint-markers'
@@ -31,7 +32,6 @@ const MAP_COLORS = {
     bg: '#f8f7f0',
     gridFill: 0.28,
     gridLine: 0.14,
-    chosen: '#ec4899',
     loopOutbound: '#15803d',
     loopReturn: '#c2410c',
     returnLeg: '#0d9488',
@@ -42,14 +42,13 @@ const MAP_COLORS = {
     finish: '#ea580c',
     startBg: '#dcfce7',
     finishBg: '#ffedd5',
-    gridStroke: '#64748b',
+    gridStroke: '#475569',
   },
   dark: {
     primary: '#9dd4b8',
     bg: '#2a3531',
     gridFill: 0.32,
     gridLine: 0.16,
-    chosen: '#f5b4d4',
     loopOutbound: '#a8d4f0',
     loopReturn: '#f5d0a8',
     returnLeg: '#9ee8d8',
@@ -60,7 +59,7 @@ const MAP_COLORS = {
     finish: '#f5c49a',
     startBg: '#3d5248',
     finishBg: '#524840',
-    gridStroke: '#b8c8c0',
+    gridStroke: '#d8e8e0',
   },
 } as const
 
@@ -296,7 +295,7 @@ export default function ScenicMap({
   const tileColor = coverageColor ?? C.primary
   const coveredTiles = useMemo(() => Array.from(coverage), [coverage])
   const isRoundTrip = Boolean(returnRoute)
-  const outboundColor = isRoundTrip ? C.loopOutbound : C.chosen
+  const outboundColor = isRoundTrip ? C.loopOutbound : C.primary
   const returnColor = isRoundTrip ? C.loopReturn : C.returnLeg
   const themedAlternates = useMemo(
     () =>
@@ -404,17 +403,13 @@ export default function ScenicMap({
         </>
       )}
 
-      {/* Selected route — pink (one-way) or green (round-trip outbound) */}
+      {/* Selected route — primary green (one-way) or loop outbound color */}
       {chosen && (
-        <Polyline
-          positions={chosen.coords}
-          pathOptions={{
-            color: outboundColor,
-            weight: 10,
-            opacity: 0.95,
-            lineJoin: 'round',
-            lineCap: 'round',
-          }}
+        <SelectedRouteLayer
+          route={chosen}
+          color={outboundColor}
+          userSpeedKmh={userSpeedKmh}
+          mapPickActive={mapPickActive}
         />
       )}
 

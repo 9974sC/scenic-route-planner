@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Bricolage_Grotesque } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ThemeScript } from '@/components/theme-script'
+import { APP_DESCRIPTION, APP_TITLE } from '@/lib/brand'
 import './globals.css'
 
 const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
@@ -12,9 +13,8 @@ const bricolage = Bricolage_Grotesque({
 })
 
 export const metadata: Metadata = {
-  title: 'Scenic — take the long way home',
-  description:
-    'A router that hands you a beautiful bike ride, then lights up the map with every road you cover.',
+  title: APP_TITLE,
+  description: APP_DESCRIPTION,
   generator: 'v0.app',
   icons: {
     icon: [

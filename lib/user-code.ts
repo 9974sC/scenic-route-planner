@@ -1,3 +1,5 @@
+import { LEGACY_USER_ID_PREFIX, USER_ID_PREFIX } from '@/lib/brand'
+
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 /** AA0001, AA0002, … AB0001 as the sequence grows. */
@@ -14,10 +16,13 @@ export function formatUserCode(seq: number): string {
 }
 
 export function parseLoginCode(input: string): string | null {
-  const raw = input.trim().toUpperCase().replace(/^SCENIC-/, '')
+  const raw = input
+    .trim()
+    .toUpperCase()
+    .replace(new RegExp(`^(${USER_ID_PREFIX}|${LEGACY_USER_ID_PREFIX})-`), '')
   return /^[A-Z]{2}\d{4}$/.test(raw) ? raw : null
 }
 
 export function displayUserId(publicCode: string): string {
-  return `SCENIC-${publicCode}`
+  return `${USER_ID_PREFIX}-${publicCode}`
 }

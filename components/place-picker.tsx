@@ -34,6 +34,8 @@ type Props = {
   onMapPickRequest?: () => void
   /** When set, show "Your location" as the first picker option */
   userPosition?: LatLng | null
+  /** Label left of the field instead of above (saves vertical space). */
+  inlineLabel?: boolean
 }
 
 function usePopupStyle(
@@ -123,6 +125,7 @@ export function PlacePicker({
   mapPickActive = false,
   onMapPickRequest,
   userPosition = null,
+  inlineLabel = false,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -313,15 +316,23 @@ export function PlacePicker({
       : null
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-1">
+    <div
+      ref={rootRef}
+      className={cn(
+        inlineLabel ? 'flex items-center gap-2' : 'flex flex-col gap-1',
+      )}
+    >
       <label
         htmlFor={triggerId}
-        className="text-xs font-medium text-muted-foreground"
+        className={cn(
+          'text-xs font-medium text-muted-foreground',
+          inlineLabel && 'w-9 shrink-0 leading-none',
+        )}
       >
         {label}
       </label>
 
-      <div className="flex items-stretch gap-1.5">
+      <div className="flex min-w-0 flex-1 items-stretch gap-1.5">
         <button
           id={triggerId}
           ref={triggerRef}
@@ -330,8 +341,10 @@ export function PlacePicker({
           aria-haspopup="listbox"
           aria-controls={open ? listId : undefined}
           onClick={() => setOpen((prev) => !prev)}
+          title={inlineLabel ? `${value.name} — ${value.hint}` : undefined}
           className={cn(
-            'flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-background px-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+            'flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-background px-2 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+            inlineLabel ? 'h-9' : 'h-10',
             mapPickActive && 'border-primary/40 bg-primary/5',
           )}
         >
@@ -348,9 +361,13 @@ export function PlacePicker({
             >
               {value.name}
             </span>
-            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/75">
-              {value.hint}
-            </span>
+            {!inlineLabel ? (
+              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/75">
+                {value.hint}
+              </span>
+            ) : (
+              <span className="sr-only">{value.hint}</span>
+            )}
           </span>
           <ChevronDown
             className={cn(
@@ -366,7 +383,7 @@ export function PlacePicker({
             type="button"
             variant={mapPickActive ? 'default' : 'outline'}
             size="icon"
-            className="size-10 shrink-0"
+            className={cn('shrink-0', inlineLabel ? 'size-9' : 'size-10')}
             aria-pressed={mapPickActive}
             aria-label={
               mapPickActive ? 'Click the map to set point' : 'Pick on map'
