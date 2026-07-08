@@ -1,11 +1,13 @@
-import { WARSAW_BBOX, TILE_SIZE } from '@/lib/geo'
+import {
+  COVERAGE_GRID_ORIGIN,
+  WARSAW_BBOX,
+  gridDimension,
+  tileLatStep,
+  tileLngStep,
+} from '@/lib/geo'
 import type { LatLng } from '@/lib/types'
 
-/** Fixed geographic origin for the Warsaw coverage grid (south-west corner). */
-export const COVERAGE_GRID_ORIGIN: LatLng = {
-  lat: WARSAW_BBOX.south,
-  lng: WARSAW_BBOX.west,
-}
+export { COVERAGE_GRID_ORIGIN }
 
 export type GridCellIndex = { tx: number; ty: number }
 
@@ -19,18 +21,20 @@ export type GridCellBounds = {
   east: number
 }
 
-/** South-west and north-east corners for a tile index — fixed lat/lng. */
+/** South-west and north-east corners for a square tile index. */
 export function cellBoundsForIndex(tx: number, ty: number): GridCellBounds {
-  const south = COVERAGE_GRID_ORIGIN.lat + ty * TILE_SIZE
-  const west = COVERAGE_GRID_ORIGIN.lng + tx * TILE_SIZE
+  const latStep = tileLatStep()
+  const lngStep = tileLngStep(ty)
+  const south = COVERAGE_GRID_ORIGIN.lat + ty * latStep
+  const west = COVERAGE_GRID_ORIGIN.lng + tx * lngStep
   return {
     tx,
     ty,
     key: `${tx}:${ty}`,
     south,
     west,
-    north: south + TILE_SIZE,
-    east: west + TILE_SIZE,
+    north: south + latStep,
+    east: west + lngStep,
   }
 }
 
@@ -57,14 +61,21 @@ export function visibleGridCells(view: {
   const east = Math.min(view.east, WARSAW_BBOX.east)
   if (south >= north || west >= east) return []
 
-  const tyStart = Math.floor((south - COVERAGE_GRID_ORIGIN.lat) / TILE_SIZE)
-  const tyEnd = Math.ceil((north - COVERAGE_GRID_ORIGIN.lat) / TILE_SIZE)
-  const txStart = Math.floor((west - COVERAGE_GRID_ORIGIN.lng) / TILE_SIZE)
-  const txEnd = Math.ceil((east - COVERAGE_GRID_ORIGIN.lng) / TILE_SIZE)
+  const n = gridDimension()
+  const latStep = tileLatStep()
+  const tyStart = Math.floor((south - COVERAGE_GRID_ORIGIN.lat) / latStep)
+  const tyEnd = Math.ceil((north - COVERAGE_GRID_ORIGIN.lat) / latStep)
 
   const cells: GridCellBounds[] = []
   for (let ty = tyStart; ty <= tyEnd; ty++) {
+    if (ty < 0 || ty >= n) continue
+
+    const lngStep = tileLngStep(ty)
+    const txStart = Math.floor((west - COVERAGE_GRID_ORIGIN.lng) / lngStep)
+    const txEnd = Math.ceil((east - COVERAGE_GRID_ORIGIN.lng) / lngStep)
+
     for (let tx = txStart; tx <= txEnd; tx++) {
+      if (tx < 0 || tx >= n) continue
       const cell = cellBoundsForIndex(tx, ty)
       if (cell.north < south || cell.south > north) continue
       if (cell.east < west || cell.west > east) continue

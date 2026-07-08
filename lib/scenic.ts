@@ -77,6 +77,33 @@ export function pickScenic(
   return finalists[0]?.index ?? directIndex
 }
 
+/** Pick outbound route by scenic, shortest, or longest within budget. */
+export function pickOutboundByPreference(
+  candidates: RouteCandidate[],
+  directIndex: number,
+  weights: ScenicWeights,
+  budgetMinutes: number,
+  preference: ReturnPathPreference,
+): number {
+  const pool = eligibleReturnIndices(candidates, directIndex, budgetMinutes)
+
+  if (preference === 'shortest') {
+    return pool.reduce(
+      (best, i) => (candidates[i].distance < candidates[best].distance ? i : best),
+      pool[0],
+    )
+  }
+
+  if (preference === 'longest') {
+    return pool.reduce(
+      (best, i) => (candidates[i].distance > candidates[best].distance ? i : best),
+      pool[0],
+    )
+  }
+
+  return pickScenic(candidates, directIndex, weights, budgetMinutes)
+}
+
 /**
  * Pick a return leg that forms a loop: scenic within budget, minimal overlap
  * with the outbound path (avoids backtracking and parallel duplicates).

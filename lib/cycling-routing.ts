@@ -1,5 +1,5 @@
 import type { LatLng } from '@/lib/types'
-import { WARSAW_BBOX, TILE_SIZE } from '@/lib/geo'
+import { WARSAW_BBOX } from '@/lib/geo'
 
 /** Typical leisure cycling pace used for simulated ETAs (km/h). */
 export const CYCLING_SPEED_KMH = 20

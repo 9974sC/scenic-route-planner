@@ -89,13 +89,12 @@ export function CoveragePanel({
           <Button
             type="button"
             size="sm"
-            variant={leaderboardOpen ? 'default' : 'outline'}
+            variant="outline"
             className="w-full"
             onClick={onOpenLeaderboard}
-            aria-pressed={leaderboardOpen}
           >
             <Trophy className="size-4" />
-            {leaderboardOpen ? 'Hide leaderboard' : 'Leaderboard'}
+            Leaderboard
           </Button>
         ) : null}
       </div>

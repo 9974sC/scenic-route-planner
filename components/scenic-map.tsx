@@ -34,6 +34,8 @@ const MAP_COLORS = {
     gridFill: 0.28,
     gridLine: 0.14,
     chosen: '#ec4899',
+    loopOutbound: '#15803d',
+    loopReturn: '#92400e',
     returnLeg: '#0d9488',
     alternates: ['#5b21b6', '#7c3aed', '#9333ea', '#a855f7'],
     directRed: '#dc2626',
@@ -49,6 +51,8 @@ const MAP_COLORS = {
     gridFill: 0.35,
     gridLine: 0.18,
     chosen: '#f472b6',
+    loopOutbound: '#22c55e',
+    loopReturn: '#d97706',
     returnLeg: '#2dd4bf',
     alternates: ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed'],
     directRed: '#f87171',
@@ -374,6 +378,9 @@ export default function ScenicMap({
   const C = MAP_COLORS[resolvedTheme]
   const tileColor = coverageColor ?? C.primary
   const coveredTiles = useMemo(() => Array.from(coverage), [coverage])
+  const isRoundTrip = Boolean(returnRoute)
+  const outboundColor = isRoundTrip ? C.loopOutbound : C.chosen
+  const returnColor = isRoundTrip ? C.loopReturn : C.returnLeg
   const themedAlternates = useMemo(
     () =>
       alternateRoutes.map((route, i) => ({
@@ -437,7 +444,7 @@ export default function ScenicMap({
       )}
 
       {/* Direct / fastest route — red & orange dashed overlay */}
-      {direct && chosen && direct.id !== chosen.id && (
+      {direct && chosen && direct.id !== chosen.id && !isRoundTrip && (
         <>
           <Polyline
             positions={direct.coords}
@@ -464,12 +471,12 @@ export default function ScenicMap({
         </>
       )}
 
-      {/* Selected route — pink */}
+      {/* Selected route — pink (one-way) or green (round-trip outbound) */}
       {chosen && (
         <Polyline
           positions={chosen.coords}
           pathOptions={{
-            color: C.chosen,
+            color: outboundColor,
             weight: 7,
             opacity: 0.95,
             lineJoin: 'round',
@@ -478,14 +485,14 @@ export default function ScenicMap({
         />
       )}
 
-      {/* Return leg — teal dashed loop back to start */}
+      {/* Return leg — brown dashed loop back to start */}
       {returnRoute && (
         <Polyline
           positions={returnRoute.coords}
           pathOptions={{
-            color: C.returnLeg,
+            color: returnColor,
             weight: 6,
-            opacity: 0.88,
+            opacity: 0.9,
             dashArray: '10 6',
             lineJoin: 'round',
             lineCap: 'round',
@@ -493,9 +500,15 @@ export default function ScenicMap({
         />
       )}
 
-      {/* Turn direction markers (above route line, below UI overlays) */}
       {chosen?.turnMarkers && chosen.turnMarkers.length > 0 && (
-        <TurnMarkersLayer markers={chosen.turnMarkers} color={C.chosen} />
+        <TurnMarkersLayer markers={chosen.turnMarkers} color={outboundColor} />
+      )}
+
+      {returnRoute?.turnMarkers && returnRoute.turnMarkers.length > 0 && (
+        <TurnMarkersLayer
+          markers={returnRoute.turnMarkers}
+          color={returnColor}
+        />
       )}
 
       <RouteEndpointMarkers

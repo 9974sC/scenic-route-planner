@@ -26,6 +26,7 @@ type Props = {
   direct: RouteCandidate
   returnLeg?: RouteCandidate | null
   returnPreference?: ReturnPathPreference
+  pathPreference?: ReturnPathPreference
   onFindReturn?: () => void
   onClearReturn?: () => void
   onChooseShortestReturn?: () => void
@@ -63,6 +64,7 @@ export function RouteSummary({
   direct,
   returnLeg = null,
   returnPreference = 'scenic',
+  pathPreference = 'scenic',
   onFindReturn,
   onClearReturn,
   onChooseShortestReturn,
@@ -77,6 +79,7 @@ export function RouteSummary({
     : null
   const loopDistance = returnLeg ? chosen.distance + returnLeg.distance : null
   const loopDuration = returnLeg ? chosen.duration + returnLeg.duration : null
+  const activePreference = returnLeg ? returnPreference : pathPreference
 
   return (
     <div className="flex flex-col gap-4">
@@ -87,7 +90,7 @@ export function RouteSummary({
             {fmtDuration(returnLeg && loopDuration ? loopDuration : chosen.duration)}
           </span>
           {returnLeg ? (
-            <span className="rounded-full bg-teal-500/15 px-2.5 py-0.5 text-sm font-medium text-teal-700 dark:text-teal-300">
+            <span className="rounded-full bg-green-600/15 px-2.5 py-0.5 text-sm font-medium text-green-800 dark:text-green-300">
               Round trip
             </span>
           ) : isDirect ? (
@@ -156,12 +159,12 @@ export function RouteSummary({
               </Button>
             ) : null}
           </div>
-          {returnLeg && onChooseShortestReturn && onChooseLongestReturn ? (
+          {onChooseShortestReturn && onChooseLongestReturn ? (
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
-                variant={returnPreference === 'shortest' ? 'secondary' : 'outline'}
+                variant={activePreference === 'shortest' ? 'secondary' : 'outline'}
                 onClick={onChooseShortestReturn}
               >
                 Choose shortest path
@@ -169,7 +172,7 @@ export function RouteSummary({
               <Button
                 type="button"
                 size="sm"
-                variant={returnPreference === 'longest' ? 'secondary' : 'outline'}
+                variant={activePreference === 'longest' ? 'secondary' : 'outline'}
                 onClick={onChooseLongestReturn}
               >
                 Choose longest path

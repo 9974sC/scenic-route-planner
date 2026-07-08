@@ -11,7 +11,7 @@ function userLocationIcon(active: boolean, following: boolean): L.DivIcon {
   const cached = ICON_CACHE.get(key)
   if (cached) return cached
 
-  const size = 20
+  const size = 30
   const classes = [
     'user-location-marker',
     active ? 'user-location-marker--active' : '',

@@ -10,10 +10,61 @@ export const WARSAW_BBOX = {
   east: 21.27,
 }
 
-/** Coverage grid cell size in degrees (~0.9 km at Warsaw latitude). */
-export const TILE_SIZE = 0.008
+/** Fixed geographic origin for the Warsaw coverage grid (south-west corner). */
+export const COVERAGE_GRID_ORIGIN: LatLng = {
+  lat: WARSAW_BBOX.south,
+  lng: WARSAW_BBOX.west,
+}
+
+/** Ground size of each coverage cell — square on the map (meters). */
+export const TILE_SIZE_M = 900
 
 const R = 6371000 // earth radius meters
+const METERS_PER_DEG_LAT = (2 * Math.PI * R) / 360
+
+function warsawGroundExtents() {
+  const centerLat = (WARSAW_BBOX.north + WARSAW_BBOX.south) / 2
+  const heightM =
+    (WARSAW_BBOX.north - WARSAW_BBOX.south) * METERS_PER_DEG_LAT
+  const widthM =
+    (WARSAW_BBOX.east - WARSAW_BBOX.west) *
+    METERS_PER_DEG_LAT *
+    Math.cos(toRad(centerLat))
+  return { heightM, widthM, centerLat }
+}
+
+/** Equal row and column count for the Warsaw square grid. */
+export function gridDimension(): number {
+  const { heightM, widthM } = warsawGroundExtents()
+  return Math.max(
+    Math.ceil(heightM / TILE_SIZE_M),
+    Math.ceil(widthM / TILE_SIZE_M),
+  )
+}
+
+export function gridRowCount(): number {
+  return gridDimension()
+}
+
+export function gridColCount(): number {
+  return gridDimension()
+}
+
+export function tileLatStep(): number {
+  return TILE_SIZE_M / METERS_PER_DEG_LAT
+}
+
+export function rowCenterLat(ty: number): number {
+  return WARSAW_BBOX.south + (ty + 0.5) * tileLatStep()
+}
+
+/** Longitude span for a square cell at grid row ty. */
+export function tileLngStep(ty: number): number {
+  return TILE_SIZE_M / (METERS_PER_DEG_LAT * Math.cos(toRad(rowCenterLat(ty))))
+}
+
+/** @deprecated Use tileLatStep() — kept for any legacy imports */
+export const TILE_SIZE = tileLatStep()
 
 export function haversine(a: LatLng, b: LatLng): number {
   const dLat = toRad(b.lat - a.lat)
@@ -186,17 +237,24 @@ export function hash01(seed: string): number {
   return ((h >>> 0) % 100000) / 100000
 }
 
-/** key for the coverage tile that contains a point */
+/** key for the square coverage tile that contains a point */
 export function tileKey(lat: number, lng: number): string {
-  const ty = Math.floor((lat - WARSAW_BBOX.south) / TILE_SIZE)
-  const tx = Math.floor((lng - WARSAW_BBOX.west) / TILE_SIZE)
+  const latStep = tileLatStep()
+  const n = gridDimension()
+  let ty = Math.floor((lat - WARSAW_BBOX.south) / latStep)
+  ty = Math.max(0, Math.min(n - 1, ty))
+
+  const lngStep = tileLngStep(ty)
+  let tx = Math.floor((lng - WARSAW_BBOX.west) / lngStep)
+  tx = Math.max(0, Math.min(n - 1, tx))
+
   return `${tx}:${ty}`
 }
 
-/** all tile keys a path passes through (sampled every ~250 m) */
+/** all tile keys a path passes through (sampled every ~half a cell) */
 export function tilesForPath(coords: [number, number][]): Set<string> {
   const keys = new Set<string>()
-  const sampleM = 250
+  const sampleM = TILE_SIZE_M / 2
   for (let i = 1; i < coords.length; i++) {
     const [aLat, aLng] = coords[i - 1]
     const [bLat, bLng] = coords[i]
@@ -217,17 +275,20 @@ export function tilesForPath(coords: [number, number][]): Set<string> {
 /** bounds (SW/NE latlng) for a tile key */
 export function tileBounds(key: string): [[number, number], [number, number]] {
   const [tx, ty] = key.split(':').map(Number)
-  const south = WARSAW_BBOX.south + ty * TILE_SIZE
-  const west = WARSAW_BBOX.west + tx * TILE_SIZE
+  const latStep = tileLatStep()
+  const south = WARSAW_BBOX.south + ty * latStep
+  const north = south + latStep
+  const lngStep = tileLngStep(ty)
+  const west = WARSAW_BBOX.west + tx * lngStep
+  const east = west + lngStep
   return [
     [south, west],
-    [south + TILE_SIZE, west + TILE_SIZE],
+    [north, east],
   ]
 }
 
-/** total number of tiles in the Warsaw playing field */
+/** total tiles in the N×N Warsaw playing field */
 export function totalTiles(): number {
-  const rows = Math.ceil((WARSAW_BBOX.north - WARSAW_BBOX.south) / TILE_SIZE)
-  const cols = Math.ceil((WARSAW_BBOX.east - WARSAW_BBOX.west) / TILE_SIZE)
-  return rows * cols
+  const n = gridDimension()
+  return n * n
 }

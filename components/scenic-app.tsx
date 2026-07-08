@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { LatLng, RouteResponse, ScenicWeights } from '@/lib/types'
-import { PLACES, DEFAULT_WEIGHTS, pickScenic, pickReturnByPreference, rankReturnCandidates, type ReturnPathPreference } from '@/lib/scenic'
+import { PLACES, DEFAULT_WEIGHTS, pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, type ReturnPathPreference } from '@/lib/scenic'
 import type { RouteEndpoint } from '@/lib/places'
 import {
   endpointsEqual,
@@ -32,7 +32,8 @@ import { UserBadge } from '@/components/user-badge'
 import { TripHistoryPanel } from '@/components/trip-history-panel'
 import { useAuth } from '@/components/auth-provider'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { LeaderboardBar } from '@/components/leaderboard-bar'
+import { LeaderboardDialog } from '@/components/leaderboard-dialog'
+import { WeatherOverlay } from '@/components/weather-overlay'
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import type { WeatherResponse } from '@/lib/weather-types'
 import { WARSAW_CENTER } from '@/lib/geo'
@@ -171,15 +172,25 @@ export function ScenicApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end])
 
+  const [outboundPreference, setOutboundPreference] =
+    useState<ReturnPathPreference>('scenic')
+
   const autoChosenIndex = useMemo(() => {
     if (!data) return 0
-    return pickScenic(data.candidates, data.directIndex, weights, budget)
-  }, [data, weights, budget])
+    return pickOutboundByPreference(
+      data.candidates,
+      data.directIndex,
+      weights,
+      budget,
+      outboundPreference,
+    )
+  }, [data, weights, budget, outboundPreference])
 
   const [manualChosenIndex, setManualChosenIndex] = useState<number | null>(null)
 
   useEffect(() => {
     setManualChosenIndex(null)
+    setOutboundPreference('scenic')
     setReturnData(null)
     setReturnError(null)
   }, [data])
@@ -236,6 +247,7 @@ export function ScenicApp() {
   }, [user, trips, localPastPaths])
 
   const handleSelectRoute = useCallback((index: number) => {
+    setOutboundPreference('scenic')
     setManualChosenIndex(index)
   }, [])
 
@@ -341,16 +353,26 @@ export function ScenicApp() {
   }, [])
 
   const handleChooseShortestReturn = useCallback(() => {
-    if (!returnData) return
-    setReturnPreference('shortest')
-    setManualReturnIndex(null)
-  }, [returnData])
+    if (returnData) {
+      setReturnPreference('shortest')
+      setManualReturnIndex(null)
+      return
+    }
+    if (!data) return
+    setOutboundPreference('shortest')
+    setManualChosenIndex(null)
+  }, [returnData, data])
 
   const handleChooseLongestReturn = useCallback(() => {
-    if (!returnData) return
-    setReturnPreference('longest')
-    setManualReturnIndex(null)
-  }, [returnData])
+    if (returnData) {
+      setReturnPreference('longest')
+      setManualReturnIndex(null)
+      return
+    }
+    if (!data) return
+    setOutboundPreference('longest')
+    setManualChosenIndex(null)
+  }, [returnData, data])
 
   const handleSwap = useCallback(() => {
     setStartManual(end)
@@ -529,7 +551,6 @@ export function ScenicApp() {
   }, [leaderboardOpen])
 
   useEffect(() => {
-    if (!leaderboardOpen) return
     let cancelled = false
     setWeatherLoading(true)
     setWeatherError(null)
@@ -552,27 +573,21 @@ export function ScenicApp() {
     return () => {
       cancelled = true
     }
-  }, [leaderboardOpen, weatherLat, weatherLng])
+  }, [weatherLat, weatherLng])
 
-  const handleToggleLeaderboard = useCallback(() => {
-    setLeaderboardOpen((open) => {
-      const next = !open
-      if (next) setShowCoverage(true)
-      return next
-    })
+  const handleOpenLeaderboard = useCallback(() => {
+    setLeaderboardOpen(true)
+    setShowCoverage(true)
   }, [])
 
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-background">
-      <LeaderboardBar
+      <LeaderboardDialog
         open={leaderboardOpen}
         onClose={() => setLeaderboardOpen(false)}
         entries={leaderboardEntries}
         loading={leaderboardLoading}
         error={leaderboardError}
-        weather={weather}
-        weatherLoading={weatherLoading}
-        weatherError={weatherError}
         currentUserId={user?.id}
       />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -635,6 +650,7 @@ export function ScenicApp() {
                 direct={direct}
                 returnLeg={returnLeg}
                 returnPreference={returnPreference}
+                pathPreference={outboundPreference}
                 onFindReturn={handleFindReturn}
                 onClearReturn={handleClearReturn}
                 onChooseShortestReturn={handleChooseShortestReturn}
@@ -658,7 +674,7 @@ export function ScenicApp() {
           onReset={handleResetCoverage}
           justAdded={justAdded}
           signedIn={Boolean(user)}
-          onOpenLeaderboard={handleToggleLeaderboard}
+          onOpenLeaderboard={handleOpenLeaderboard}
           leaderboardOpen={leaderboardOpen}
         />
 
@@ -691,6 +707,12 @@ export function ScenicApp() {
 
       {/* Map */}
       <div className="relative z-0 min-h-0 flex-1">
+        <WeatherOverlay
+          weather={weather}
+          loading={weatherLoading}
+          error={weatherError}
+          directionsPanelOpen={directionsOpen}
+        />
         <MapToolbar
           directionsOpen={directionsOpen}
           onDirectionsToggle={() => setDirectionsOpen((open) => !open)}
