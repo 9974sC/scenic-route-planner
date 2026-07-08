@@ -20,6 +20,7 @@ type Props = {
   currentPositionLabel: string
   distanceToNextM: number | null
   hasRoute: boolean
+  onStepSelect?: (step: DirectionStep) => void
 }
 
 export function DirectionsPanel({
@@ -33,6 +34,7 @@ export function DirectionsPanel({
   currentPositionLabel,
   distanceToNextM,
   hasRoute,
+  onStepSelect,
 }: Props) {
   const panelId = useId()
 
@@ -54,7 +56,7 @@ export function DirectionsPanel({
       id={panelId}
       role="region"
       aria-label="Turn-by-turn directions"
-      className="absolute inset-y-0 right-0 z-[1000] flex w-full max-w-[min(100%,20rem)] flex-col border-l border-border bg-background/95 shadow-xl backdrop-blur-sm"
+      className="flex min-h-0 flex-1 flex-col"
     >
           <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
             <div className="min-w-0">
@@ -110,13 +112,16 @@ export function DirectionsPanel({
               const done = index < activeStepIndex
               return (
                 <li key={step.id} className="list-none">
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => onStepSelect?.(step)}
                     className={cn(
-                      'flex items-start gap-2 rounded-lg px-2 py-2',
-                      active && 'bg-primary/10 ring-1 ring-primary/20',
+                      'flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/60',
+                      active && 'bg-primary/10 ring-1 ring-primary/20 hover:bg-primary/15',
                       done && 'opacity-55',
                     )}
                     aria-current={active ? 'step' : undefined}
+                    aria-label={`Show on map: ${step.text}`}
                   >
                     <div
                       className={cn(
@@ -153,7 +158,7 @@ export function DirectionsPanel({
                         aria-hidden
                       />
                     ) : null}
-                  </div>
+                  </button>
                 </li>
               )
             })}

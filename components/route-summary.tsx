@@ -3,6 +3,7 @@
 import type { RouteCandidate } from '@/lib/types'
 import type { ReturnPathPreference } from '@/lib/scenic'
 import {
+  adjustedDuration,
   fmtBiggestHill,
   fmtDistance,
   fmtDuration,
@@ -19,6 +20,7 @@ import {
   TrendingUp,
   RotateCcw,
   Loader2,
+  Bookmark,
 } from 'lucide-react'
 
 type Props = {
@@ -31,7 +33,12 @@ type Props = {
   onClearReturn?: () => void
   onChooseShortestReturn?: () => void
   onChooseLongestReturn?: () => void
+  onSaveRoute?: () => void
   returnLoading?: boolean
+  saveRouteLoading?: boolean
+  saveRouteMessage?: string | null
+  loopDisabled?: boolean
+  userSpeedKmh?: number
 }
 
 function Meter({
@@ -69,16 +76,25 @@ export function RouteSummary({
   onClearReturn,
   onChooseShortestReturn,
   onChooseLongestReturn,
+  onSaveRoute,
   returnLoading = false,
+  saveRouteLoading = false,
+  saveRouteMessage = null,
+  loopDisabled = false,
+  userSpeedKmh = 15,
 }: Props) {
-  const extraSec = chosen.duration - direct.duration
+  const chosenDuration = adjustedDuration(chosen, userSpeedKmh)
+  const directDuration = adjustedDuration(direct, userSpeedKmh)
+  const extraSec = chosenDuration - directDuration
   const extraMin = Math.round(extraSec / 60)
   const isDirect = chosen.id === direct.id
   const overlapPct = returnLeg
     ? Math.round(pathOverlapRatio(chosen.coords, returnLeg.coords) * 100)
     : null
   const loopDistance = returnLeg ? chosen.distance + returnLeg.distance : null
-  const loopDuration = returnLeg ? chosen.duration + returnLeg.duration : null
+  const loopDuration = returnLeg
+    ? chosenDuration + adjustedDuration(returnLeg, userSpeedKmh)
+    : null
   const activePreference = returnLeg ? returnPreference : pathPreference
 
   return (
@@ -87,7 +103,7 @@ export function RouteSummary({
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <Clock className="size-5 shrink-0 text-time" aria-hidden />
           <span className="font-display text-3xl font-semibold tabular-nums text-time">
-            {fmtDuration(returnLeg && loopDuration ? loopDuration : chosen.duration)}
+            {fmtDuration(returnLeg && loopDuration ? loopDuration : chosenDuration)}
           </span>
           {returnLeg ? (
             <span className="rounded-full bg-green-600/15 px-2.5 py-0.5 text-sm font-medium text-green-800 dark:text-green-300">
@@ -132,6 +148,27 @@ export function RouteSummary({
         </div>
       </div>
 
+      {onChooseShortestReturn && onChooseLongestReturn ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={activePreference === 'shortest' ? 'secondary' : 'outline'}
+            onClick={onChooseShortestReturn}
+          >
+            Choose shortest path
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={activePreference === 'longest' ? 'secondary' : 'outline'}
+            onClick={onChooseLongestReturn}
+          >
+            Choose longest path
+          </Button>
+        </div>
+      ) : null}
+
       {onFindReturn ? (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -139,7 +176,7 @@ export function RouteSummary({
               type="button"
               size="sm"
               variant={returnLeg ? 'secondary' : 'outline'}
-              disabled={returnLoading}
+              disabled={returnLoading || loopDisabled}
               onClick={onFindReturn}
             >
               {returnLoading ? (
@@ -159,25 +196,34 @@ export function RouteSummary({
               </Button>
             ) : null}
           </div>
-          {onChooseShortestReturn && onChooseLongestReturn ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={activePreference === 'shortest' ? 'secondary' : 'outline'}
-                onClick={onChooseShortestReturn}
-              >
-                Choose shortest path
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={activePreference === 'longest' ? 'secondary' : 'outline'}
-                onClick={onChooseLongestReturn}
-              >
-                Choose longest path
-              </Button>
-            </div>
+          {loopDisabled ? (
+            <p className="text-[11px] text-muted-foreground">
+              Loop return is unavailable when start and destination are the same.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {onSaveRoute ? (
+        <div className="flex flex-col gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={saveRouteLoading}
+            onClick={onSaveRoute}
+          >
+            {saveRouteLoading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Bookmark className="size-4" aria-hidden />
+            )}
+            Save route
+          </Button>
+          {saveRouteMessage ? (
+            <p className="text-xs text-primary" role="status">
+              {saveRouteMessage}
+            </p>
           ) : null}
         </div>
       ) : null}

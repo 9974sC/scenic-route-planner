@@ -17,11 +17,13 @@ import type {
   RegisterInput,
   TripSummary,
 } from '@/lib/auth-types'
+import type { SavedRouteSummary } from '@/lib/saved-routes'
 
 type AuthState = {
   user: PublicUser | null
   claimedTiles: string[]
   trips: TripSummary[]
+  savedRoutes: SavedRouteSummary[]
   loading: boolean
   error: string | null
 }
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: null,
     claimedTiles: [],
     trips: [],
+    savedRoutes: [],
     loading: true,
     error: null,
   })
@@ -71,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: data.user,
       claimedTiles: data.claimedTiles,
       trips: data.trips,
+      savedRoutes: data.savedRoutes ?? [],
       loading: false,
       error: null,
     })
@@ -84,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user: null,
           claimedTiles: [],
           trips: [],
+          savedRoutes: [],
           loading: false,
           error: null,
         })
@@ -145,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: null,
       claimedTiles: [],
       trips: [],
+      savedRoutes: [],
       loading: false,
       error: null,
     })

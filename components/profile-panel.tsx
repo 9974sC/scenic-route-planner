@@ -4,7 +4,23 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { Button } from '@/components/ui/button'
 import { avatarUrlForUser } from '@/lib/profile'
-import { ChevronDown, Loader2, User } from 'lucide-react'
+import { fmtDistance, fmtDuration } from '@/lib/scenic'
+import {
+  computeLifetimeStats,
+  fmtCoveragePct,
+  fmtMemberSince,
+} from '@/lib/user-stats'
+import {
+  ChevronDown,
+  Flame,
+  Loader2,
+  LogOut,
+  MapPin,
+  Pencil,
+  Route as RouteIcon,
+  User,
+  X,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const inputClass =
@@ -23,9 +39,35 @@ function formatCooldown(iso: string): string {
   return m > 0 ? `${h} h ${m} min` : `${h} h`
 }
 
+function StatTile({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: string
+  hint?: string
+}) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/20 px-2.5 py-2">
+      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
+        {label}
+      </div>
+      <div className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
+        {value}
+      </div>
+      {hint ? (
+        <div className="mt-0.5 text-[10px] text-muted-foreground">{hint}</div>
+      ) : null}
+    </div>
+  )
+}
+
 export function ProfilePanel() {
-  const { user, updateProfile, updateColor, uploadAvatar } = useAuth()
+  const { user, trips, claimedTiles, updateProfile, updateColor, uploadAvatar, logout } =
+    useAuth()
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -49,9 +91,35 @@ export function ProfilePanel() {
     return `${avatarUrlForUser(user.id)}?v=${user.avatarVersion}`
   }, [user])
 
+  const stats = useMemo(
+    () => computeLifetimeStats(trips, claimedTiles.length),
+    [trips, claimedTiles.length],
+  )
+
   const colorLocked = Boolean(user?.colorChangeAvailableAt)
 
   if (!user) return null
+
+  function closeEdit() {
+    setEditing(false)
+    setError(null)
+    setSuccess(null)
+    setDisplayName(user!.displayName ?? '')
+    setBio(user!.bio ?? '')
+    setLocation(user!.location ?? '')
+    setColorHex(user!.colorHex)
+  }
+
+  function toggleExpanded() {
+    setExpanded((open) => {
+      if (open) {
+        setEditing(false)
+        setError(null)
+        setSuccess(null)
+      }
+      return !open
+    })
+  }
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault()
@@ -69,6 +137,7 @@ export function ProfilePanel() {
       return
     }
     setSuccess('Profile saved')
+    setEditing(false)
   }
 
   async function handleColorSave() {
@@ -104,7 +173,7 @@ export function ProfilePanel() {
         type="button"
         className="flex w-full items-center gap-3 px-4 py-3 text-left"
         aria-expanded={expanded}
-        onClick={() => setExpanded((open) => !open)}
+        onClick={toggleExpanded}
       >
         {avatarSrc ? (
           <img
@@ -122,10 +191,10 @@ export function ProfilePanel() {
         )}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-foreground">
-            {user.displayName || `@${user.username}`}
+            {user.displayName || user.username}
           </span>
           <span className="block truncate font-mono text-xs text-muted-foreground">
-            {user.displayId}
+            @{user.username} · {user.displayId}
           </span>
         </span>
         <ChevronDown
@@ -138,147 +207,266 @@ export function ProfilePanel() {
       </button>
 
       {expanded ? (
-        <form
-          onSubmit={handleSaveProfile}
-          className="flex flex-col gap-3 border-t border-border px-4 pb-4 pt-3"
-        >
+        <div className="border-t border-border px-4 pb-4 pt-3">
           {error ? (
-            <p className="text-sm text-destructive" role="alert">
+            <p className="mb-3 text-sm text-destructive" role="alert">
               {error}
             </p>
           ) : null}
           {success ? (
-            <p className="text-sm text-primary" role="status">
+            <p className="mb-3 text-sm text-primary" role="status">
               {success}
             </p>
           ) : null}
 
-          <div className="flex items-center gap-3">
-            {avatarSrc ? (
-              <img
-                src={avatarSrc}
-                alt=""
-                className="size-16 rounded-full object-cover ring-1 ring-foreground/10"
-              />
-            ) : (
-              <span
-                className="flex size-16 items-center justify-center rounded-full text-lg font-semibold text-white"
-                style={{ backgroundColor: user.colorHex }}
-              >
-                <User className="size-7" aria-hidden />
-              </span>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={(e) => handleAvatarChange(e.target.files?.[0] ?? null)}
-              />
+          {!editing ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">
+                    Member since {fmtMemberSince(user.createdAt)}
+                  </p>
+                  {user.bio ? (
+                    <p className="mt-1 text-sm text-foreground">{user.bio}</p>
+                  ) : null}
+                  {user.location ? (
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <MapPin className="size-3 shrink-0" aria-hidden />
+                      {user.location}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0 gap-1 px-2 text-xs"
+                  onClick={() => {
+                    setEditing(true)
+                    setError(null)
+                    setSuccess(null)
+                  }}
+                >
+                  <Pencil className="size-3" aria-hidden />
+                  Edit
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/15 px-2.5 py-2">
+                <Flame
+                  className={cn(
+                    'size-4 shrink-0',
+                    stats.usageStreakDays > 0
+                      ? 'text-orange-500'
+                      : 'text-muted-foreground',
+                  )}
+                  aria-hidden
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">
+                    {stats.usageStreakDays > 0
+                      ? `${stats.usageStreakDays} day streak`
+                      : 'No active streak'}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {stats.usageStreakDays > 0
+                      ? 'Keep riding to extend it'
+                      : 'Log a ride today to start one'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <StatTile
+                  label="Rides"
+                  value={String(stats.tripCount)}
+                />
+                <StatTile
+                  label="Coverage"
+                  value={fmtCoveragePct(stats.coveragePct)}
+                  hint={`${stats.tilesClaimed} tiles`}
+                />
+                <StatTile
+                  label="Distance"
+                  value={fmtDistance(stats.totalDistanceM)}
+                />
+                <StatTile
+                  label="Ride time"
+                  value={fmtDuration(stats.totalDurationS)}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <RouteIcon className="size-3.5 shrink-0" aria-hidden />
+                <span>
+                  Map color{' '}
+                  <span
+                    className="inline-block size-2.5 translate-y-px rounded-full ring-1 ring-foreground/15"
+                    style={{ backgroundColor: user.colorHex }}
+                    aria-hidden
+                  />{' '}
+                  {user.colorHex}
+                </span>
+              </div>
+
               <Button
                 type="button"
-                size="sm"
                 variant="outline"
-                disabled={busy}
-                onClick={() => fileRef.current?.click()}
+                size="sm"
+                onClick={() => logout()}
               >
-                {busy ? (
-                  <Loader2 className="size-4 animate-spin" />
+                <LogOut className="size-4" aria-hidden />
+                Sign out
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSaveProfile} className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-foreground">
+                  Edit profile
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={closeEdit}
+                >
+                  <X className="size-3" aria-hidden />
+                  Cancel
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {avatarSrc ? (
+                  <img
+                    src={avatarSrc}
+                    alt=""
+                    className="size-16 rounded-full object-cover ring-1 ring-foreground/10"
+                  />
                 ) : (
-                  'Upload photo'
+                  <span
+                    className="flex size-16 items-center justify-center rounded-full text-lg font-semibold text-white"
+                    style={{ backgroundColor: user.colorHex }}
+                  >
+                    <User className="size-7" aria-hidden />
+                  </span>
                 )}
+                <div className="flex flex-col gap-1.5">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleAvatarChange(e.target.files?.[0] ?? null)
+                    }
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    {busy ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      'Upload photo'
+                    )}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    JPEG, PNG, or WebP up to 1.5 MB
+                  </span>
+                </div>
+              </div>
+
+              <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                Username
+                <input className={inputClass} value={`@${user.username}`} disabled />
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                Display name
+                <input
+                  className={inputClass}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  maxLength={48}
+                  placeholder="How you want to appear"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                Bio
+                <textarea
+                  className={textareaClass}
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  maxLength={280}
+                  placeholder="A line about your riding"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                Area / city
+                <input
+                  className={inputClass}
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  maxLength={80}
+                  placeholder="e.g. Mokotów, Warsaw"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                Map color
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={colorHex}
+                    onChange={(e) => setColorHex(e.target.value.toUpperCase())}
+                    disabled={colorLocked || busy}
+                    className="size-10 cursor-pointer rounded-lg border border-input bg-background p-1 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <input
+                    className={inputClass}
+                    value={colorHex}
+                    onChange={(e) => setColorHex(e.target.value.toUpperCase())}
+                    pattern="#[0-9A-Fa-f]{6}"
+                    maxLength={7}
+                    disabled={colorLocked || busy}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      colorLocked || busy || colorHex === user.colorHex
+                    }
+                    onClick={handleColorSave}
+                  >
+                    Apply
+                  </Button>
+                </div>
+                {colorLocked && user.colorChangeAvailableAt ? (
+                  <span className="text-[11px] text-muted-foreground">
+                    Color can be changed again in{' '}
+                    {formatCooldown(user.colorChangeAvailableAt)}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">
+                    You can change your map color once per hour
+                  </span>
+                )}
+              </label>
+
+              <Button type="submit" disabled={busy}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : 'Save profile'}
               </Button>
-              <span className="text-[11px] text-muted-foreground">
-                JPEG, PNG, or WebP up to 1.5 MB
-              </span>
-            </div>
-          </div>
-
-          <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-            Username
-            <input className={inputClass} value={`@${user.username}`} disabled />
-          </label>
-
-          <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-            Display name
-            <input
-              className={inputClass}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              maxLength={48}
-              placeholder="How you want to appear"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-            Bio
-            <textarea
-              className={textareaClass}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              maxLength={280}
-              placeholder="A line about your riding"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-            Area / city
-            <input
-              className={inputClass}
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              maxLength={80}
-              placeholder="e.g. Mokotów, Warsaw"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-            Map color
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={colorHex}
-                onChange={(e) => setColorHex(e.target.value.toUpperCase())}
-                disabled={colorLocked || busy}
-                className="size-10 cursor-pointer rounded-lg border border-input bg-background p-1 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-              <input
-                className={inputClass}
-                value={colorHex}
-                onChange={(e) => setColorHex(e.target.value.toUpperCase())}
-                pattern="#[0-9A-Fa-f]{6}"
-                maxLength={7}
-                disabled={colorLocked || busy}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={
-                  colorLocked || busy || colorHex === user.colorHex
-                }
-                onClick={handleColorSave}
-              >
-                Apply
-              </Button>
-            </div>
-            {colorLocked && user.colorChangeAvailableAt ? (
-              <span className="text-[11px] text-muted-foreground">
-                Color can be changed again in{' '}
-                {formatCooldown(user.colorChangeAvailableAt)}
-              </span>
-            ) : (
-              <span className="text-[11px] text-muted-foreground">
-                You can change your map color once per hour
-              </span>
-            )}
-          </label>
-
-          <Button type="submit" disabled={busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : 'Save profile'}
-          </Button>
-        </form>
+            </form>
+          )}
+        </div>
       ) : null}
     </div>
   )

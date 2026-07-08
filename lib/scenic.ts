@@ -22,6 +22,80 @@ export const DEFAULT_WEIGHTS: ScenicWeights = {
 /** Maximum extra minutes the scenic picker may spend over the fastest route. */
 export const MAX_SPARE_MINUTES = 180
 
+/** Sentinel for “no max extra km” in dropdowns. */
+export const NO_MAX_EXTRA_KM = 999
+
+export const EXTRA_KM_MIN_OPTIONS = [0, 1, 2, 5, 10] as const
+export const EXTRA_KM_MAX_OPTIONS = [5, 10, 15, 25, 50, NO_MAX_EXTRA_KM] as const
+
+export const DEFAULT_USER_SPEED_KMH = 15
+export const MIN_USER_SPEED_KMH = 5
+export const MAX_USER_SPEED_KMH = 40
+
+export type RoutePickConstraints = {
+  budgetMinutes: number
+  minExtraKm: number
+  maxExtraKm: number
+  userSpeedKmh: number
+}
+
+export const DEFAULT_ROUTE_CONSTRAINTS: RoutePickConstraints = {
+  budgetMinutes: 20,
+  minExtraKm: 0,
+  maxExtraKm: NO_MAX_EXTRA_KM,
+  userSpeedKmh: DEFAULT_USER_SPEED_KMH,
+}
+
+/** Duration at a constant cycling speed (seconds). */
+export function durationAtSpeed(distanceM: number, speedKmh: number): number {
+  if (speedKmh <= 0) return Number.POSITIVE_INFINITY
+  return (distanceM / 1000 / speedKmh) * 3600
+}
+
+export function adjustedDuration(
+  candidate: RouteCandidate,
+  userSpeedKmh: number,
+): number {
+  return durationAtSpeed(candidate.distance, userSpeedKmh)
+}
+
+export function extraDistanceKm(
+  candidate: RouteCandidate,
+  direct: RouteCandidate,
+): number {
+  return Math.max(0, (candidate.distance - direct.distance) / 1000)
+}
+
+export function extraDurationMinutes(
+  candidate: RouteCandidate,
+  direct: RouteCandidate,
+  userSpeedKmh: number,
+): number {
+  return (
+    (adjustedDuration(candidate, userSpeedKmh) -
+      adjustedDuration(direct, userSpeedKmh)) /
+    60
+  )
+}
+
+export function fmtDurationDelta(secondsDelta: number): string {
+  const min = Math.round(secondsDelta / 60)
+  if (min === 0) return 'Same time'
+  if (min > 0) return `+${min} min`
+  return `${min} min`
+}
+
+export function fmtExtraKmLabel(km: number): string {
+  if (km >= NO_MAX_EXTRA_KM) return 'No limit'
+  if (km === 0) return '0 km'
+  return `${km} km`
+}
+
+export function clampUserSpeedKmh(speed: number): number {
+  if (!Number.isFinite(speed)) return DEFAULT_USER_SPEED_KMH
+  return Math.max(MIN_USER_SPEED_KMH, Math.min(MAX_USER_SPEED_KMH, speed))
+}
+
 /** weighted scenic score 0..1 given a candidate's raw metrics */
 export function weightedScenic(
   c: Pick<RouteCandidate, 'greenness' | 'curviness' | 'viewpoints'>,
@@ -45,14 +119,14 @@ export function pickScenic(
   candidates: RouteCandidate[],
   directIndex: number,
   weights: ScenicWeights,
-  budgetMinutes: number,
+  constraints: RoutePickConstraints,
 ): number {
   const direct = candidates[directIndex]
   const eligible: { index: number; score: number; extraMin: number }[] = []
 
   candidates.forEach((c, i) => {
-    const extraMin = (c.duration - direct.duration) / 60
-    if (extraMin > budgetMinutes + 0.5) return
+    if (!candidateEligible(c, direct, constraints)) return
+    const extraMin = extraDurationMinutes(c, direct, constraints.userSpeedKmh)
     eligible.push({
       index: i,
       score: weightedScenic(c, weights),
@@ -64,7 +138,7 @@ export function pickScenic(
 
   eligible.sort((a, b) => b.score - a.score)
   const topScore = eligible[0].score
-  const useDetourBias = budgetMinutes >= 45
+  const useDetourBias = constraints.budgetMinutes >= 45
   const scoreFloor = topScore * (useDetourBias ? 0.93 : 0.995)
 
   const finalists = eligible.filter((e) => e.score >= scoreFloor)
@@ -82,10 +156,10 @@ export function pickOutboundByPreference(
   candidates: RouteCandidate[],
   directIndex: number,
   weights: ScenicWeights,
-  budgetMinutes: number,
+  constraints: RoutePickConstraints,
   preference: ReturnPathPreference,
 ): number {
-  const pool = eligibleReturnIndices(candidates, directIndex, budgetMinutes)
+  const pool = eligibleReturnIndices(candidates, directIndex, constraints)
 
   if (preference === 'shortest') {
     return pool.reduce(
@@ -101,7 +175,7 @@ export function pickOutboundByPreference(
     )
   }
 
-  return pickScenic(candidates, directIndex, weights, budgetMinutes)
+  return pickScenic(candidates, directIndex, weights, constraints)
 }
 
 /**
@@ -110,17 +184,40 @@ export function pickOutboundByPreference(
  */
 export type ReturnPathPreference = 'scenic' | 'longest' | 'shortest'
 
+function candidateEligible(
+  candidate: RouteCandidate,
+  direct: RouteCandidate,
+  constraints: RoutePickConstraints,
+): boolean {
+  const extraMin = extraDurationMinutes(
+    candidate,
+    direct,
+    constraints.userSpeedKmh,
+  )
+  if (extraMin > constraints.budgetMinutes + 0.5) return false
+
+  const extraKm = extraDistanceKm(candidate, direct)
+  if (extraKm < constraints.minExtraKm - 0.05) return false
+  if (
+    constraints.maxExtraKm < NO_MAX_EXTRA_KM &&
+    extraKm > constraints.maxExtraKm + 0.05
+  ) {
+    return false
+  }
+
+  return true
+}
+
 function eligibleReturnIndices(
   candidates: RouteCandidate[],
   directIndex: number,
-  budgetMinutes: number,
+  constraints: RoutePickConstraints,
 ): number[] {
   const direct = candidates[directIndex]
   const indices: number[] = []
 
   candidates.forEach((c, i) => {
-    const extraMin = (c.duration - direct.duration) / 60
-    if (extraMin <= budgetMinutes + 0.5) indices.push(i)
+    if (candidateEligible(c, direct, constraints)) indices.push(i)
   })
 
   return indices.length ? indices : [directIndex]
@@ -130,11 +227,11 @@ export function pickReturnByPreference(
   candidates: RouteCandidate[],
   directIndex: number,
   weights: ScenicWeights,
-  budgetMinutes: number,
+  constraints: RoutePickConstraints,
   outboundCoords: [number, number][],
   preference: ReturnPathPreference,
 ): number {
-  const pool = eligibleReturnIndices(candidates, directIndex, budgetMinutes)
+  const pool = eligibleReturnIndices(candidates, directIndex, constraints)
 
   if (preference === 'shortest') {
     return pool.reduce(
@@ -154,7 +251,7 @@ export function pickReturnByPreference(
     candidates,
     directIndex,
     weights,
-    budgetMinutes,
+    constraints,
     outboundCoords,
   )
 }
@@ -163,7 +260,7 @@ export function pickReturnRoute(
   candidates: RouteCandidate[],
   directIndex: number,
   weights: ScenicWeights,
-  budgetMinutes: number,
+  constraints: RoutePickConstraints,
   outboundCoords: [number, number][],
 ): number {
   const direct = candidates[directIndex]
@@ -174,7 +271,7 @@ export function pickReturnRoute(
     loopScore: number
   }[] = []
 
-  for (const i of eligibleReturnIndices(candidates, directIndex, budgetMinutes)) {
+  for (const i of eligibleReturnIndices(candidates, directIndex, constraints)) {
     const c = candidates[i]
     const scenic = weightedScenic(c, weights)
     const overlap = pathOverlapRatio(outboundCoords, c.coords)
@@ -200,12 +297,12 @@ export function rankReturnCandidates(
   candidates: RouteCandidate[],
   directIndex: number,
   weights: ScenicWeights,
-  budgetMinutes: number,
+  constraints: RoutePickConstraints,
   outboundCoords: [number, number][],
 ): number[] {
   const ranked: { index: number; loopScore: number; overlap: number }[] = []
 
-  for (const i of eligibleReturnIndices(candidates, directIndex, budgetMinutes)) {
+  for (const i of eligibleReturnIndices(candidates, directIndex, constraints)) {
     const c = candidates[i]
     const scenic = weightedScenic(c, weights)
     const overlap = pathOverlapRatio(outboundCoords, c.coords)

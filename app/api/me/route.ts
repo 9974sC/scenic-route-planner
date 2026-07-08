@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { desc, eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
-import { claimedTiles, trips, users } from '@/lib/db/schema'
+import { claimedTiles, savedRoutes, trips, users } from '@/lib/db/schema'
 import {
   requireUser,
   requireUserRow,
@@ -11,6 +11,7 @@ import {
 import type { MeResponse } from '@/lib/auth-types'
 import { dbErrorResponse } from '@/lib/db/errors'
 import { tripToSummary } from '@/lib/trips'
+import { savedRouteToSummary } from '@/lib/saved-routes'
 import {
   colorChangeStatus,
   validateBio,
@@ -39,7 +40,7 @@ export async function GET() {
     }
 
     const db = getDb()
-    const [tileRows, tripRows] = await Promise.all([
+    const [tileRows, tripRows, savedRows] = await Promise.all([
       db
         .select({ tileKey: claimedTiles.tileKey })
         .from(claimedTiles)
@@ -50,12 +51,19 @@ export async function GET() {
         .where(eq(trips.userId, user.id))
         .orderBy(desc(trips.drivenAt))
         .limit(50),
+      db
+        .select()
+        .from(savedRoutes)
+        .where(eq(savedRoutes.userId, user.id))
+        .orderBy(desc(savedRoutes.savedAt))
+        .limit(50),
     ])
 
     const payload: MeResponse = {
       user,
       claimedTiles: tileRows.map((r) => r.tileKey),
       trips: tripRows.map(tripToSummary),
+      savedRoutes: savedRows.map(savedRouteToSummary),
     }
     return NextResponse.json(payload)
   } catch (err) {

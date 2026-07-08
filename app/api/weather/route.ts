@@ -17,7 +17,11 @@ export async function GET(req: Request) {
   }
 
   try {
-    const forecast = await fetchWeatherForecast(lat, lng)
+    const hoursParam = Number(searchParams.get('hours') ?? 12)
+    const hours = Number.isFinite(hoursParam)
+      ? Math.min(12, Math.max(1, Math.round(hoursParam)))
+      : 12
+    const forecast = await fetchWeatherForecast(lat, lng, hours)
     return NextResponse.json(forecast)
   } catch (err) {
     console.error('[weather GET]', err)

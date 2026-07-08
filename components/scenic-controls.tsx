@@ -1,78 +1,121 @@
 'use client'
 
-import type { ScenicWeights } from '@/lib/types'
-import { MAX_SPARE_MINUTES, fmtSpareMinutes } from '@/lib/scenic'
+import {
+  EXTRA_KM_MIN_OPTIONS,
+  EXTRA_KM_MAX_OPTIONS,
+  MAX_SPARE_MINUTES,
+  MAX_USER_SPEED_KMH,
+  MIN_USER_SPEED_KMH,
+  NO_MAX_EXTRA_KM,
+  clampUserSpeedKmh,
+  fmtExtraKmLabel,
+  fmtSpareMinutes,
+} from '@/lib/scenic'
 import type { LatLng } from '@/lib/types'
 import type { RouteEndpoint } from '@/lib/places'
+import { isLocationEndpoint } from '@/lib/places'
+import {
+  SCENIC_PREFERENCE_OPTIONS,
+  type ScenicPreference,
+  type ScenicPreferenceSet,
+} from '@/lib/scenic-preferences'
 import { PlacePicker } from '@/components/place-picker'
 import { Slider } from '@/components/ui/slider'
 import { Button } from '@/components/ui/button'
-import { ArrowLeftRight, Leaf, Waves, Mountain, Clock } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { ArrowLeftRight, Leaf, Waves, Mountain, Clock, Route as RouteIcon, Navigation } from 'lucide-react'
 
 type Props = {
   start: RouteEndpoint
   end: RouteEndpoint
-  weights: ScenicWeights
+  preferences: ScenicPreferenceSet
   budget: number
+  minExtraKm: number
+  maxExtraKm: number
+  userSpeedKmh: number
   onStart: (endpoint: RouteEndpoint) => void
   onEnd: (endpoint: RouteEndpoint) => void
-  onWeights: (w: ScenicWeights) => void
+  onPreferences: (p: ScenicPreferenceSet) => void
   onBudget: (n: number) => void
+  onMinExtraKm: (n: number) => void
+  onMaxExtraKm: (n: number) => void
+  onUserSpeedKmh: (n: number) => void
   onSwap: () => void
   menuContainer?: HTMLElement | null
   mapPickTarget?: 'start' | 'end' | null
   onMapPickRequest?: (target: 'start' | 'end') => void
   userPosition?: LatLng | null
+  onRouteToLocation?: () => void
 }
 
-function WeightSlider({
+function PreferenceSelect({
   icon,
   label,
   value,
   onChange,
+  menuContainer,
 }: {
   icon: React.ReactNode
   label: string
-  value: number
-  onChange: (v: number) => void
+  value: ScenicPreference
+  onChange: (v: ScenicPreference) => void
+  menuContainer?: HTMLElement | null
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          {icon}
-          {label}
-        </div>
-        <span className="text-xs tabular-nums text-muted-foreground/80">
-          {Math.round(value * 100)}%
-        </span>
-      </div>
-      <Slider
-        value={[value * 100]}
-        min={0}
-        max={100}
-        step={5}
-        onValueChange={(v) => onChange((Array.isArray(v) ? v[0] : v) / 100)}
-      />
-    </div>
+    <label className="flex items-center justify-between gap-2">
+      <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+        {icon}
+        <span className="truncate">{label}</span>
+      </span>
+      <Select
+        value={value}
+        onValueChange={(v) => onChange(v as ScenicPreference)}
+      >
+        <SelectTrigger className="h-8 w-[7.5rem] shrink-0" size="sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent container={menuContainer ?? undefined}>
+          {SCENIC_PREFERENCE_OPTIONS.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
   )
 }
 
 export function ScenicControls({
   start,
   end,
-  weights,
+  preferences,
   budget,
+  minExtraKm,
+  maxExtraKm,
+  userSpeedKmh,
   onStart,
   onEnd,
-  onWeights,
+  onPreferences,
   onBudget,
+  onMinExtraKm,
+  onMaxExtraKm,
+  onUserSpeedKmh,
   onSwap,
   menuContainer,
   mapPickTarget,
   onMapPickRequest,
   userPosition = null,
+  onRouteToLocation,
 }: Props) {
+  const headingToLocation = isLocationEndpoint(end)
+
   return (
     <div className="flex flex-col gap-2">
       <div className="rounded-xl border border-border bg-card p-2 shadow-sm">
@@ -119,28 +162,55 @@ export function ScenicControls({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-xl border border-border bg-card/60 p-3">
+      {userPosition && onRouteToLocation ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onRouteToLocation}
+        >
+          <Navigation className="size-4" aria-hidden />
+          Route to my location (min 1 km extra)
+        </Button>
+      ) : null}
+
+      <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-sm">
         <div className="text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase">
           What makes a good ride today?
         </div>
-        <WeightSlider
+        <PreferenceSelect
           icon={<Leaf className="size-3.5 text-primary" aria-hidden />}
           label="Greenery"
-          value={weights.greenness}
-          onChange={(v) => onWeights({ ...weights, greenness: v })}
+          value={preferences.greenness}
+          onChange={(v) =>
+            onPreferences({ ...preferences, greenness: v })
+          }
+          menuContainer={menuContainer}
         />
-        <WeightSlider
+        <PreferenceSelect
           icon={<Waves className="size-3.5 text-primary" aria-hidden />}
           label="Curves"
-          value={weights.curviness}
-          onChange={(v) => onWeights({ ...weights, curviness: v })}
+          value={preferences.curviness}
+          onChange={(v) =>
+            onPreferences({ ...preferences, curviness: v })
+          }
+          menuContainer={menuContainer}
         />
-        <WeightSlider
+        <PreferenceSelect
           icon={<Mountain className="size-3.5 text-primary" aria-hidden />}
           label="Viewpoints"
-          value={weights.viewpoints}
-          onChange={(v) => onWeights({ ...weights, viewpoints: v })}
+          value={preferences.viewpoints}
+          onChange={(v) =>
+            onPreferences({ ...preferences, viewpoints: v })
+          }
+          menuContainer={menuContainer}
         />
+        {headingToLocation ? (
+          <p className="text-[11px] text-muted-foreground">
+            Routes to your location need at least 1 km of extra distance.
+          </p>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
@@ -201,6 +271,82 @@ export function ScenicControls({
             <span>Fastest way</span>
             <span>{fmtSpareMinutes(MAX_SPARE_MINUTES).replace(/^\+/, 'Up to +')}</span>
           </div>
+        </div>
+
+        <div className="mt-3 space-y-3 border-t border-border pt-3">
+          <div className="flex items-center gap-2">
+            <RouteIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <p className="text-xs font-medium text-foreground">Extra distance</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted-foreground">Min extra km</span>
+              <Select
+                value={String(minExtraKm)}
+                onValueChange={(v) => {
+                  const nextMin = Number(v)
+                  onMinExtraKm(nextMin)
+                  if (maxExtraKm < NO_MAX_EXTRA_KM && maxExtraKm < nextMin) {
+                    onMaxExtraKm(nextMin)
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent container={menuContainer ?? undefined}>
+                  {EXTRA_KM_MIN_OPTIONS.map((km) => (
+                    <SelectItem key={km} value={String(km)}>
+                      {fmtExtraKmLabel(km)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted-foreground">Max extra km</span>
+              <Select
+                value={String(maxExtraKm)}
+                onValueChange={(v) => {
+                  const nextMax = Number(v)
+                  onMaxExtraKm(nextMax)
+                  if (nextMax < NO_MAX_EXTRA_KM && nextMax < minExtraKm) {
+                    onMinExtraKm(nextMax)
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent container={menuContainer ?? undefined}>
+                  {EXTRA_KM_MAX_OPTIONS.filter(
+                    (km) => km >= minExtraKm || km >= NO_MAX_EXTRA_KM,
+                  ).map((km) => (
+                    <SelectItem key={km} value={String(km)}>
+                      {fmtExtraKmLabel(km)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">
+              Your avg speed (km/h)
+            </span>
+            <input
+              type="number"
+              min={MIN_USER_SPEED_KMH}
+              max={MAX_USER_SPEED_KMH}
+              step={0.5}
+              value={userSpeedKmh}
+              onChange={(e) =>
+                onUserSpeedKmh(clampUserSpeedKmh(Number(e.target.value)))
+              }
+              className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+              aria-label="Average cycling speed in kilometers per hour"
+            />
+          </label>
         </div>
       </div>
     </div>

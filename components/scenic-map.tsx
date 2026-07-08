@@ -11,10 +11,6 @@ import {
 } from 'react-leaflet'
 import type { LatLng, RouteCandidate } from '@/lib/types'
 import { WARSAW_CENTER } from '@/lib/geo'
-import {
-  cellCorners,
-  visibleGridCells,
-} from '@/lib/coverage-grid'
 import type { PastPath } from '@/lib/past-paths'
 import { joinLoopCoords } from '@/lib/route-overlap'
 import { AlternateRoutesLayer, type AlternateRoute } from '@/components/alternate-routes-layer'
@@ -23,6 +19,7 @@ import { TurnMarkersLayer } from '@/components/turn-markers-layer'
 import { RouteEndpointMarkers } from '@/components/route-endpoint-markers'
 import { UserLocationMarker } from '@/components/user-location-marker'
 import { LeaderboardGridLayer } from '@/components/leaderboard-grid-layer'
+import { CoveredTilesLayer } from '@/components/covered-tiles-layer'
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import { useTheme } from '@/components/theme-provider'
 
@@ -35,15 +32,16 @@ const MAP_COLORS = {
     gridLine: 0.14,
     chosen: '#ec4899',
     loopOutbound: '#15803d',
-    loopReturn: '#92400e',
+    loopReturn: '#c2410c',
     returnLeg: '#0d9488',
-    alternates: ['#5b21b6', '#7c3aed', '#9333ea', '#a855f7'],
+    alternates: ['#2563eb', '#ea580c', '#0891b2', '#c026d3', '#ca8a04', '#dc2626'],
     directRed: '#dc2626',
     directOrange: '#f97316',
     start: '#16a34a',
     finish: '#ea580c',
     startBg: '#dcfce7',
     finishBg: '#ffedd5',
+    gridStroke: '#64748b',
   },
   dark: {
     primary: '#48e59a',
@@ -51,16 +49,17 @@ const MAP_COLORS = {
     gridFill: 0.35,
     gridLine: 0.18,
     chosen: '#f472b6',
-    loopOutbound: '#22c55e',
-    loopReturn: '#d97706',
+    loopOutbound: '#38bdf8',
+    loopReturn: '#fb923c',
     returnLeg: '#2dd4bf',
-    alternates: ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed'],
+    alternates: ['#60a5fa', '#fb7185', '#22d3ee', '#e879f9', '#facc15', '#4ade80'],
     directRed: '#f87171',
     directOrange: '#fb923c',
     start: '#4ade80',
     finish: '#fb923c',
     startBg: '#14532d',
     finishBg: '#7c2d12',
+    gridStroke: '#94a3b8',
   },
 } as const
 
@@ -69,6 +68,12 @@ const TILE_URL = {
     'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
 } as const
+
+export type MapFocusTarget = {
+  lat: number
+  lng: number
+  key: number
+}
 
 type Props = {
   start: LatLng
@@ -88,10 +93,12 @@ type Props = {
   onUseLocationAsStart?: () => void
   alternateRoutes?: AlternateRoute[]
   onSelectRoute?: (index: number) => void
+  userSpeedKmh?: number
   pastPaths?: PastPath[]
   returnRoute?: RouteCandidate | null
   leaderboardOpen?: boolean
   leaderboardEntries?: LeaderboardEntry[]
+  mapFocus?: MapFocusTarget | null
 }
 
 // One controller keeps the map sized to its container and frames the chosen
@@ -211,6 +218,24 @@ function MapLocateController({
   return null
 }
 
+/** Fly to a point when the user selects a direction step. */
+function MapFocusController({ focus }: { focus: MapFocusTarget | null }) {
+  const map = useMap()
+  const lastKeyRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!focus || focus.key === lastKeyRef.current) return
+    lastKeyRef.current = focus.key
+    map.flyTo(
+      [focus.lat, focus.lng],
+      Math.max(map.getZoom(), 15),
+      { duration: 0.45 },
+    )
+  }, [focus, map])
+
+  return null
+}
+
 function MapPickHandler({
   active,
   onPick,
@@ -238,119 +263,6 @@ function MapPickHandler({
   return null
 }
 
-/** Canvas grid pinned to map container coords (not a transformed Leaflet pane). */
-function CoverageGridLayer({
-  visible,
-  color,
-  lineOpacity,
-  coveredKeys,
-  uncapturedFillOpacity,
-}: {
-  visible: boolean
-  color: string
-  lineOpacity: number
-  coveredKeys: string[]
-  uncapturedFillOpacity: number
-}) {
-  const map = useMap()
-  const coveredRef = useRef(coveredKeys)
-  coveredRef.current = coveredKeys
-  const redrawRef = useRef<() => void>(() => {})
-
-  useEffect(() => {
-    if (!visible) return
-
-    const container = map.getContainer()
-    const canvas = document.createElement('canvas')
-    canvas.className = 'leaflet-coverage-grid pointer-events-none'
-    canvas.style.position = 'absolute'
-    canvas.style.left = '0'
-    canvas.style.top = '0'
-    canvas.style.zIndex = '350'
-    container.appendChild(canvas)
-
-    const drawCell = (
-      ctx: CanvasRenderingContext2D,
-      cell: ReturnType<typeof visibleGridCells>[number],
-      covered: Set<string>,
-      viewSize: { x: number; y: number },
-    ) => {
-      const corners = cellCorners(cell).map(([lat, lng]) =>
-        map.latLngToContainerPoint([lat, lng]),
-      )
-      const xs = corners.map((p) => p.x)
-      const ys = corners.map((p) => p.y)
-      const minX = Math.min(...xs)
-      const maxX = Math.max(...xs)
-      const minY = Math.min(...ys)
-      const maxY = Math.max(...ys)
-      if (maxX < 0 || minX > viewSize.x || maxY < 0 || minY > viewSize.y) return
-
-      ctx.beginPath()
-      ctx.moveTo(corners[0].x, corners[0].y)
-      for (let i = 1; i < corners.length; i++) {
-        ctx.lineTo(corners[i].x, corners[i].y)
-      }
-      ctx.closePath()
-
-      if (!covered.has(cell.key)) {
-        ctx.globalAlpha = uncapturedFillOpacity
-        ctx.fillStyle = color
-        ctx.fill()
-      }
-
-      ctx.globalAlpha = lineOpacity
-      ctx.strokeStyle = color
-      ctx.lineWidth = 1
-      ctx.stroke()
-    }
-
-    const redraw = () => {
-      const size = map.getSize()
-      const dpr = window.devicePixelRatio || 1
-      canvas.width = Math.floor(size.x * dpr)
-      canvas.height = Math.floor(size.y * dpr)
-      canvas.style.width = `${size.x}px`
-      canvas.style.height = `${size.y}px`
-
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.clearRect(0, 0, size.x, size.y)
-
-      const bounds = map.getBounds()
-      const covered = new Set(coveredRef.current)
-      const cells = visibleGridCells({
-        south: bounds.getSouth(),
-        north: bounds.getNorth(),
-        west: bounds.getWest(),
-        east: bounds.getEast(),
-      })
-
-      for (const cell of cells) {
-        drawCell(ctx, cell, covered, size)
-      }
-    }
-
-    redrawRef.current = redraw
-    map.on('move zoom resize viewreset', redraw)
-    redraw()
-
-    return () => {
-      map.off('move zoom resize viewreset', redraw)
-      redrawRef.current = () => {}
-      canvas.remove()
-    }
-  }, [map, visible, color, lineOpacity, uncapturedFillOpacity])
-
-  useEffect(() => {
-    if (visible) redrawRef.current()
-  }, [visible, coveredKeys])
-
-  return null
-}
-
 export default function ScenicMap({
   start,
   end,
@@ -369,10 +281,12 @@ export default function ScenicMap({
   onUseLocationAsStart,
   alternateRoutes = [],
   onSelectRoute,
+  userSpeedKmh = 15,
   pastPaths = [],
   returnRoute = null,
   leaderboardOpen = false,
   leaderboardEntries = [],
+  mapFocus = null,
 }: Props) {
   const { resolvedTheme } = useTheme()
   const C = MAP_COLORS[resolvedTheme]
@@ -413,6 +327,7 @@ export default function ScenicMap({
         position={userPosition}
         onStopFollowing={() => onStopFollowingUser?.()}
       />
+      <MapFocusController focus={mapFocus} />
       <MapPickHandler active={mapPickActive} onPick={onMapPick} />
 
       {leaderboardOpen && leaderboardEntries.length > 0 ? (
@@ -422,22 +337,22 @@ export default function ScenicMap({
           lineOpacity={C.gridLine}
         />
       ) : showCoverage ? (
-        <CoverageGridLayer
-          visible
-          color={tileColor}
-          lineOpacity={C.gridLine}
+        <CoveredTilesLayer
           coveredKeys={coveredTiles}
-          uncapturedFillOpacity={C.gridFill}
+          color={tileColor}
+          gridColor={C.gridStroke}
+          fillOpacity={C.gridFill + 0.14}
         />
       ) : null}
 
       <PastPathsLayer paths={pastPaths} theme={resolvedTheme} />
 
-      {/* Alternate routes — purple, hover for details, click to select */}
-      {direct && onSelectRoute && themedAlternates.length > 0 && (
+      {/* Alternate routes — distinct colors, hover for details, click to select */}
+      {chosen && onSelectRoute && themedAlternates.length > 0 && (
         <AlternateRoutesLayer
           routes={themedAlternates}
-          direct={direct}
+          reference={chosen}
+          userSpeedKmh={userSpeedKmh}
           mapPickActive={mapPickActive}
           onSelect={onSelectRoute}
         />
@@ -477,7 +392,7 @@ export default function ScenicMap({
           positions={chosen.coords}
           pathOptions={{
             color: outboundColor,
-            weight: 7,
+            weight: 10,
             opacity: 0.95,
             lineJoin: 'round',
             lineCap: 'round',
@@ -485,13 +400,13 @@ export default function ScenicMap({
         />
       )}
 
-      {/* Return leg — brown dashed loop back to start */}
+      {/* Return leg — dashed loop back to start */}
       {returnRoute && (
         <Polyline
           positions={returnRoute.coords}
           pathOptions={{
             color: returnColor,
-            weight: 6,
+            weight: 9,
             opacity: 0.9,
             dashArray: '10 6',
             lineJoin: 'round',

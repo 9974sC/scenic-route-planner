@@ -93,6 +93,7 @@ export function toPublicUser(row: User): PublicUser {
     colorChangeAvailableAt: colorStatus.allowed
       ? null
       : colorStatus.availableAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
   }
 }
 

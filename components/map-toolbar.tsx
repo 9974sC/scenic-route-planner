@@ -29,14 +29,14 @@ export function MapToolbar({
     >
       <Button
         type="button"
-        size="sm"
+        size="lg"
         variant="default"
         className="shadow-md"
         aria-expanded={directionsOpen}
         disabled={!hasDirections}
         onClick={onDirectionsToggle}
       >
-        <Navigation className="size-4" aria-hidden />
+        <Navigation className="size-5" aria-hidden />
         Directions
       </Button>
     </div>

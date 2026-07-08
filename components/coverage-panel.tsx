@@ -41,7 +41,7 @@ export function CoveragePanel({
           </span>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          Show grid
+          Show coverage
           <Switch checked={showCoverage} onCheckedChange={onToggle} />
         </label>
       </div>

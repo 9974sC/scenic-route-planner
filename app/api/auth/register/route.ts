@@ -90,6 +90,7 @@ export async function POST(req: Request) {
       user: toPublicUser(created),
       claimedTiles: [] as string[],
       trips: [],
+      savedRoutes: [],
     })
   } catch (err: unknown) {
     const code =

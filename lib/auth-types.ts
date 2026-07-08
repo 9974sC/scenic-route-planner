@@ -15,6 +15,8 @@ export type PublicUser = {
   avatarVersion: number
   /** ISO timestamp when color can be changed again; null if allowed now. */
   colorChangeAvailableAt: string | null
+  /** ISO timestamp when the account was created. */
+  createdAt: string
 }
 
 export type TripSummary = {
@@ -36,6 +38,7 @@ export type MeResponse = {
   user: PublicUser
   claimedTiles: string[]
   trips: TripSummary[]
+  savedRoutes: import('@/lib/saved-routes').SavedRouteSummary[]
 }
 
 export type RegisterInput = {

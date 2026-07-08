@@ -65,5 +65,32 @@ export const trips = pgTable('trips', {
   drivenAt: timestamp('driven_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const savedRoutes = pgTable('saved_routes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  startName: text('start_name').notNull(),
+  startLat: doublePrecision('start_lat').notNull(),
+  startLng: doublePrecision('start_lng').notNull(),
+  endName: text('end_name').notNull(),
+  endLat: doublePrecision('end_lat').notNull(),
+  endLng: doublePrecision('end_lng').notNull(),
+  isRoundTrip: integer('is_round_trip').notNull().default(0),
+  distanceM: integer('distance_m').notNull(),
+  durationS: integer('duration_s').notNull(),
+  outboundCoords: json('outbound_coords')
+    .$type<[number, number][]>()
+    .notNull()
+    .default([]),
+  returnCoords: json('return_coords').$type<[number, number][] | null>(),
+  directionSteps: json('direction_steps').$type<unknown[]>().notNull().default([]),
+  returnDirectionSteps: json('return_direction_steps').$type<unknown[] | null>(),
+  weights: json('weights').$type<Record<string, number>>().notNull().default({}),
+  savedAt: timestamp('saved_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 export type User = typeof users.$inferSelect
 export type Trip = typeof trips.$inferSelect
+export type SavedRoute = typeof savedRoutes.$inferSelect

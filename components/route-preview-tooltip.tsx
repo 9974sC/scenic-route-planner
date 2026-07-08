@@ -2,33 +2,46 @@
 
 import type { RouteCandidate } from '@/lib/types'
 import {
+  adjustedDuration,
   fmtBiggestHill,
   fmtDistance,
   fmtDuration,
+  fmtDurationDelta,
   fmtElevationRange,
 } from '@/lib/scenic'
 
 type Props = {
   route: RouteCandidate
-  direct: RouteCandidate
+  reference: RouteCandidate
+  userSpeedKmh: number
 }
 
-export function RoutePreviewTooltip({ route, direct }: Props) {
-  const extraMin = Math.round((route.duration - direct.duration) / 60)
-  const isDirect = route.id === direct.id
+export function RoutePreviewTooltip({
+  route,
+  reference,
+  userSpeedKmh,
+}: Props) {
+  const routeSec = adjustedDuration(route, userSpeedKmh)
+  const referenceSec = adjustedDuration(reference, userSpeedKmh)
+  const deltaSec = routeSec - referenceSec
+  const isReference = route.id === reference.id
 
   return (
     <div className="min-w-[10rem] space-y-1.5 text-xs leading-snug">
       <div className="font-semibold text-foreground">
-        {fmtDuration(route.duration)}
-        {!isDirect && (
-          <span className="ml-1.5 font-medium text-time">
-            {extraMin <= 0 ? '· same time' : `· +${extraMin} min`}
-          </span>
+        {isReference ? (
+          'Selected route'
+        ) : (
+          <>
+            <span className="text-time">{fmtDurationDelta(deltaSec)}</span>
+            <span className="ml-1 font-medium text-muted-foreground">
+              vs selected
+            </span>
+          </>
         )}
       </div>
       <div className="tabular-nums text-muted-foreground">
-        {fmtDistance(route.distance)}
+        {fmtDuration(routeSec)} total · {fmtDistance(route.distance)}
         {route.elevation ? (
           <>
             {' · '}

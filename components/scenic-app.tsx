@@ -2,10 +2,17 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import type { LatLng, RouteResponse, ScenicWeights } from '@/lib/types'
-import { PLACES, DEFAULT_WEIGHTS, pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, type ReturnPathPreference } from '@/lib/scenic'
+import type { LatLng, RouteResponse } from '@/lib/types'
+import { PLACES, pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, NO_MAX_EXTRA_KM, DEFAULT_USER_SPEED_KMH, clampUserSpeedKmh, type ReturnPathPreference, type RoutePickConstraints } from '@/lib/scenic'
+import {
+  DEFAULT_PREFERENCES,
+  preferencesToWeights,
+  weightsToPreferences,
+} from '@/lib/scenic-preferences'
+import type { SavedRouteSummary } from '@/lib/saved-routes'
 import type { RouteEndpoint } from '@/lib/places'
 import {
+  customEndpoint,
   endpointsEqual,
   isLocationEndpoint,
   locationEndpoint,
@@ -19,25 +26,26 @@ import {
   buildDirectionSteps,
   distanceToStep,
   findActiveStepIndex,
+  type DirectionStep,
 } from '@/lib/directions'
 import { ScenicControls } from '@/components/scenic-controls'
 import { RouteSummary } from '@/components/route-summary'
 import { CoveragePanel } from '@/components/coverage-panel'
-import { DirectionsPanel } from '@/components/directions-panel'
+import { MapRightRail } from '@/components/map-right-rail'
 import { MapToolbar } from '@/components/map-toolbar'
 import { LocateMeButton } from '@/components/locate-me-button'
 import { AuthPanel } from '@/components/auth-panel'
 import { ProfilePanel } from '@/components/profile-panel'
-import { UserBadge } from '@/components/user-badge'
+import { SavedRoutesPanel } from '@/components/saved-routes-panel'
 import { TripHistoryPanel } from '@/components/trip-history-panel'
 import { useAuth } from '@/components/auth-provider'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LeaderboardDialog } from '@/components/leaderboard-dialog'
-import { WeatherOverlay } from '@/components/weather-overlay'
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import type { WeatherResponse } from '@/lib/weather-types'
 import { WARSAW_CENTER } from '@/lib/geo'
 import { Compass, Loader2, Sparkles } from 'lucide-react'
+import type { MapFocusTarget } from '@/components/scenic-map'
 
 const ScenicMap = dynamic(() => import('@/components/scenic-map'), {
   ssr: false,
@@ -60,8 +68,25 @@ export function ScenicApp() {
   const { user, claimedTiles, trips, refresh } = useAuth()
   const [start, setStart] = useState<RouteEndpoint>(defaultStart)
   const [end, setEnd] = useState<RouteEndpoint>(defaultEnd)
-  const [weights, setWeights] = useState<ScenicWeights>(DEFAULT_WEIGHTS)
+  const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES)
+  const weights = useMemo(
+    () => preferencesToWeights(preferences),
+    [preferences],
+  )
   const [budget, setBudget] = useState(20)
+  const [minExtraKm, setMinExtraKm] = useState(0)
+  const [maxExtraKm, setMaxExtraKm] = useState(NO_MAX_EXTRA_KM)
+  const [userSpeedKmh, setUserSpeedKmh] = useState(DEFAULT_USER_SPEED_KMH)
+
+  const routeConstraints = useMemo<RoutePickConstraints>(
+    () => ({
+      budgetMinutes: budget,
+      minExtraKm,
+      maxExtraKm,
+      userSpeedKmh: clampUserSpeedKmh(userSpeedKmh),
+    }),
+    [budget, minExtraKm, maxExtraKm, userSpeedKmh],
+  )
 
   const [data, setData] = useState<RouteResponse | null>(null)
   const [returnData, setReturnData] = useState<RouteResponse | null>(null)
@@ -79,11 +104,14 @@ export function ScenicApp() {
   const [showCoverage, setShowCoverage] = useState(false)
   const [justAdded, setJustAdded] = useState<number | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveRouteLoading, setSaveRouteLoading] = useState(false)
+  const [saveRouteMessage, setSaveRouteMessage] = useState<string | null>(null)
   const [sidebarEl, setSidebarEl] = useState<HTMLDivElement | null>(null)
   const [mapPickTarget, setMapPickTarget] = useState<'start' | 'end' | null>(
     null,
   )
   const [directionsOpen, setDirectionsOpen] = useState(false)
+  const [mapFocus, setMapFocus] = useState<MapFocusTarget | null>(null)
   const [userPosition, setUserPosition] = useState<LatLng | null>(null)
   const [locationAccuracyM, setLocationAccuracyM] = useState<number | null>(
     null,
@@ -100,6 +128,20 @@ export function ScenicApp() {
   const [weatherError, setWeatherError] = useState<string | null>(null)
   const startTouchedRef = useRef(false)
   const geoDefaultAppliedRef = useRef(false)
+
+  const loopDisabled = endpointsEqual(start, end)
+
+  useEffect(() => {
+    if (isLocationEndpoint(end) && minExtraKm < 1) {
+      setMinExtraKm(1)
+    }
+  }, [end, minExtraKm])
+
+  useEffect(() => {
+    if (saveRouteMessage === null) return
+    const t = setTimeout(() => setSaveRouteMessage(null), 2600)
+    return () => clearTimeout(t)
+  }, [saveRouteMessage])
 
   const setStartManual = useCallback((endpoint: RouteEndpoint) => {
     startTouchedRef.current = true
@@ -181,10 +223,10 @@ export function ScenicApp() {
       data.candidates,
       data.directIndex,
       weights,
-      budget,
+      routeConstraints,
       outboundPreference,
     )
-  }, [data, weights, budget, outboundPreference])
+  }, [data, weights, routeConstraints, outboundPreference])
 
   const [manualChosenIndex, setManualChosenIndex] = useState<number | null>(null)
 
@@ -214,11 +256,11 @@ export function ScenicApp() {
       returnData.candidates,
       returnData.directIndex,
       weights,
-      budget,
+      routeConstraints,
       chosen.coords,
       returnPreference,
     )
-  }, [returnData, chosen, weights, budget, returnPreference])
+  }, [returnData, chosen, weights, routeConstraints, returnPreference])
 
   const returnIndex = manualReturnIndex ?? autoReturnIndex
   const returnLeg = returnData ? returnData.candidates[returnIndex] ?? null : null
@@ -299,7 +341,7 @@ export function ScenicApp() {
         returnData.candidates,
         returnData.directIndex,
         weights,
-        budget,
+        routeConstraints,
         chosen.coords,
       )
       const currentRank = ranked.indexOf(returnIndex)
@@ -342,7 +384,7 @@ export function ScenicApp() {
     end.point,
     start.point,
     weights,
-    budget,
+    routeConstraints,
   ])
 
   const handleClearReturn = useCallback(() => {
@@ -388,6 +430,87 @@ export function ScenicApp() {
     setStartManual(locationEndpoint(userPosition))
   }, [userPosition, setStartManual])
 
+  const handleRouteToLocation = useCallback(() => {
+    if (!userPosition) return
+    setEnd(locationEndpoint(userPosition))
+    setMinExtraKm((prev) => Math.max(prev, 1))
+  }, [userPosition])
+
+  const handleLoadSavedRoute = useCallback((route: SavedRouteSummary) => {
+    setStart(
+      customEndpoint(route.startName, 'Saved route start', {
+        lat: route.startLat,
+        lng: route.startLng,
+      }),
+    )
+    setEnd(
+      customEndpoint(route.endName, 'Saved route end', {
+        lat: route.endLat,
+        lng: route.endLng,
+      }),
+    )
+    setPreferences(weightsToPreferences(route.weights))
+    setReturnData(null)
+    setReturnError(null)
+    setManualReturnIndex(null)
+    setManualChosenIndex(null)
+  }, [])
+
+  const handleSaveRoute = useCallback(async () => {
+    if (!chosen || !user) return
+    setSaveRouteLoading(true)
+    setSaveRouteMessage(null)
+    setSaveError(null)
+    try {
+      const returnSteps =
+        returnLeg?.turnMarkers?.length
+          ? buildDirectionSteps(returnLeg.coords, returnLeg.turnMarkers)
+          : null
+      const res = await fetch('/api/saved-routes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          startName: start.name,
+          startLat: start.point.lat,
+          startLng: start.point.lng,
+          endName: end.name,
+          endLat: end.point.lat,
+          endLng: end.point.lng,
+          isRoundTrip: Boolean(returnLeg),
+          distanceM: returnLeg
+            ? chosen.distance + returnLeg.distance
+            : chosen.distance,
+          durationS: returnLeg
+            ? chosen.duration + returnLeg.duration
+            : chosen.duration,
+          outboundCoords: chosen.coords,
+          returnCoords: returnLeg?.coords ?? null,
+          directionSteps,
+          returnDirectionSteps: returnSteps,
+          weights,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Could not save route')
+      setSaveRouteMessage('Route saved to your account')
+      await refresh()
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Could not save route')
+    } finally {
+      setSaveRouteLoading(false)
+    }
+  }, [
+    chosen,
+    user,
+    start,
+    end,
+    returnLeg,
+    directionSteps,
+    weights,
+    refresh,
+  ])
+
   const handleLocate = useCallback(() => {
     setGeoError(null)
 
@@ -420,6 +543,11 @@ export function ScenicApp() {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 },
     )
   }, [userPosition])
+
+  const handleDirectionStepSelect = useCallback((step: DirectionStep) => {
+    setFollowingUser(false)
+    setMapFocus({ lat: step.lat, lng: step.lng, key: Date.now() })
+  }, [])
 
   const handleMapPick = useCallback(
     (point: { lat: number; lng: number }) => {
@@ -554,7 +682,7 @@ export function ScenicApp() {
     let cancelled = false
     setWeatherLoading(true)
     setWeatherError(null)
-    const url = `/api/weather?lat=${weatherLat}&lng=${weatherLng}`
+    const url = `/api/weather?lat=${weatherLat}&lng=${weatherLng}&hours=12`
     fetch(url)
       .then(async (r) => {
         const data = await r.json()
@@ -594,7 +722,7 @@ export function ScenicApp() {
       {/* Control column */}
       <div
         ref={setSidebarEl}
-        className="relative z-20 flex w-full shrink-0 flex-col gap-2 overflow-y-auto overflow-x-hidden border-b border-border bg-background p-3 lg:h-full lg:w-[400px] lg:border-b-0 lg:border-r"
+        className="relative z-20 flex w-full shrink-0 flex-col gap-2 overflow-y-auto overflow-x-hidden border-b border-border bg-background p-3 lg:h-full lg:w-[480px] lg:border-b-0 lg:border-r"
       >
         <header className="flex items-center gap-2.5">
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -613,22 +741,27 @@ export function ScenicApp() {
           <ThemeToggle />
         </header>
 
-        <UserBadge />
-
         <ScenicControls
           start={start}
           end={end}
-          weights={weights}
+          preferences={preferences}
           budget={budget}
+          minExtraKm={minExtraKm}
+          maxExtraKm={maxExtraKm}
+          userSpeedKmh={userSpeedKmh}
           onStart={setStartManual}
           onEnd={setEnd}
-          onWeights={setWeights}
+          onPreferences={setPreferences}
           onBudget={setBudget}
+          onMinExtraKm={setMinExtraKm}
+          onMaxExtraKm={setMaxExtraKm}
+          onUserSpeedKmh={setUserSpeedKmh}
           onSwap={handleSwap}
           menuContainer={sidebarEl}
           mapPickTarget={mapPickTarget}
           onMapPickRequest={handleMapPickRequest}
           userPosition={geoAvailable ? userPosition : null}
+          onRouteToLocation={geoAvailable ? handleRouteToLocation : undefined}
         />
 
         <div className="rounded-xl border border-border bg-card p-4">
@@ -651,11 +784,16 @@ export function ScenicApp() {
                 returnLeg={returnLeg}
                 returnPreference={returnPreference}
                 pathPreference={outboundPreference}
+                userSpeedKmh={routeConstraints.userSpeedKmh}
                 onFindReturn={handleFindReturn}
                 onClearReturn={handleClearReturn}
                 onChooseShortestReturn={handleChooseShortestReturn}
                 onChooseLongestReturn={handleChooseLongestReturn}
+                onSaveRoute={user ? handleSaveRoute : undefined}
                 returnLoading={returnLoading}
+                saveRouteLoading={saveRouteLoading}
+                saveRouteMessage={saveRouteMessage}
+                loopDisabled={loopDisabled}
               />
               {returnError ? (
                 <p className="mt-2 text-sm text-destructive" role="alert">
@@ -679,6 +817,7 @@ export function ScenicApp() {
         />
 
         <ProfilePanel />
+        <SavedRoutesPanel onLoadRoute={handleLoadSavedRoute} />
         <AuthPanel />
 
         {geoError ? (
@@ -707,22 +846,16 @@ export function ScenicApp() {
 
       {/* Map */}
       <div className="relative z-0 min-h-0 flex-1">
-        <WeatherOverlay
-          weather={weather}
-          loading={weatherLoading}
-          error={weatherError}
-          directionsPanelOpen={directionsOpen}
-        />
         <MapToolbar
           directionsOpen={directionsOpen}
           onDirectionsToggle={() => setDirectionsOpen((open) => !open)}
           hasDirections={Boolean(chosen && directionSteps.length > 0)}
-          directionsPanelOpen={directionsOpen}
+          directionsPanelOpen
         />
         <LocateMeButton
           active={followingUser}
           onLocate={handleLocate}
-          directionsPanelOpen={directionsOpen}
+          directionsPanelOpen
         />
         <ScenicMap
           start={start.point}
@@ -744,14 +877,16 @@ export function ScenicApp() {
           }
           alternateRoutes={alternateRoutes}
           onSelectRoute={handleSelectRoute}
+          userSpeedKmh={routeConstraints.userSpeedKmh}
           pastPaths={pastPaths}
           returnRoute={returnLeg}
           leaderboardOpen={leaderboardOpen}
           leaderboardEntries={leaderboardEntries}
+          mapFocus={mapFocus}
         />
-        <DirectionsPanel
-          open={directionsOpen}
-          onOpenChange={setDirectionsOpen}
+        <MapRightRail
+          directionsOpen={directionsOpen}
+          onDirectionsOpenChange={setDirectionsOpen}
           steps={directionSteps}
           startLabel={start.name}
           endLabel={end.name}
@@ -760,6 +895,10 @@ export function ScenicApp() {
           currentPositionLabel={currentPositionLabel}
           distanceToNextM={distanceToNextM}
           hasRoute={Boolean(chosen && directionSteps.length > 0)}
+          weather={weather}
+          weatherLoading={weatherLoading}
+          weatherError={weatherError}
+          onStepSelect={handleDirectionStepSelect}
         />
       </div>
       </div>

@@ -1,5 +1,8 @@
 import type { RoadWetness, WeatherHour, WeatherResponse } from '@/lib/weather-types'
 
+export const WEATHER_HOURS_COLLAPSED = 6
+export const WEATHER_HOURS_EXTENDED = 12
+
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const
 
 export function windLabel(deg: number): string {
@@ -69,7 +72,12 @@ type OpenMeteoPayload = {
 export async function fetchWeatherForecast(
   lat: number,
   lng: number,
+  forecastHours: number = WEATHER_HOURS_EXTENDED,
 ): Promise<WeatherResponse> {
+  const hourCount = Math.min(
+    WEATHER_HOURS_EXTENDED,
+    Math.max(1, Math.round(forecastHours)),
+  )
   const url = new URL('https://api.open-meteo.com/v1/forecast')
   url.searchParams.set('latitude', String(lat))
   url.searchParams.set('longitude', String(lng))
@@ -77,7 +85,7 @@ export async function fetchWeatherForecast(
     'hourly',
     'temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code',
   )
-  url.searchParams.set('forecast_hours', '6')
+  url.searchParams.set('forecast_hours', String(hourCount))
   url.searchParams.set('timezone', 'auto')
 
   const res = await fetch(url.toString(), { next: { revalidate: 900 } })
@@ -85,7 +93,7 @@ export async function fetchWeatherForecast(
 
   const json = (await res.json()) as OpenMeteoPayload
   const h = json.hourly
-  const count = Math.min(6, h.time.length)
+  const count = Math.min(hourCount, h.time.length)
 
   const hours: WeatherHour[] = []
   for (let i = 0; i < count; i++) {

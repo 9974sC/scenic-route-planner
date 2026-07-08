@@ -13,14 +13,16 @@ export type AlternateRoute = {
 
 type Props = {
   routes: AlternateRoute[]
-  direct: RouteCandidate
+  reference: RouteCandidate
+  userSpeedKmh: number
   mapPickActive: boolean
   onSelect: (index: number) => void
 }
 
 export function AlternateRoutesLayer({
   routes,
-  direct,
+  reference,
+  userSpeedKmh,
   mapPickActive,
   onSelect,
 }: Props) {
@@ -86,7 +88,11 @@ export function AlternateRoutesLayer({
             >
               {hovered && !mapPickActive ? (
                 <Tooltip sticky permanent direction="top" className="route-preview-tooltip">
-                  <RoutePreviewTooltip route={candidate} direct={direct} />
+                  <RoutePreviewTooltip
+                    route={candidate}
+                    reference={reference}
+                    userSpeedKmh={userSpeedKmh}
+                  />
                 </Tooltip>
               ) : null}
             </Polyline>
