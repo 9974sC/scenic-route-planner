@@ -6,16 +6,21 @@ import {
   MAX_SPARE_MINUTES,
   MAX_USER_SPEED_KMH,
   MIN_USER_SPEED_KMH,
-  NO_MAX_EXTRA_KM,
+  DEFAULT_MAX_EXTRA_KM,
+  clampMaxExtraKm,
   clampUserSpeedKmh,
   fmtExtraKmLabel,
   fmtSpareMinutes,
+  MIN_EXTRA_KM_TO_LOCATION,
 } from '@/lib/scenic'
 import type { LatLng } from '@/lib/types'
 import type { RouteEndpoint } from '@/lib/places'
 import { isLocationEndpoint } from '@/lib/places'
 import {
-  SCENIC_PREFERENCE_OPTIONS,
+  SCENIC_PREFERENCE_LEVELS,
+  indexToPreference,
+  preferenceLabel,
+  preferenceToIndex,
   type ScenicPreference,
   type ScenicPreferenceSet,
 } from '@/lib/scenic-preferences'
@@ -29,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeftRight, Leaf, Waves, Mountain, Clock, Route as RouteIcon, Navigation } from 'lucide-react'
+import { ArrowLeftRight, Leaf, Waves, Mountain, Clock, Route as RouteIcon, Navigation, ChevronDown } from 'lucide-react'
 
 type Props = {
   start: RouteEndpoint
@@ -54,41 +59,56 @@ type Props = {
   onRouteToLocation?: () => void
 }
 
-function PreferenceSelect({
+function PreferenceSlider({
   icon,
   label,
   value,
   onChange,
-  menuContainer,
 }: {
   icon: React.ReactNode
   label: string
   value: ScenicPreference
   onChange: (v: ScenicPreference) => void
-  menuContainer?: HTMLElement | null
 }) {
+  const index = preferenceToIndex(value)
+
   return (
-    <label className="flex items-center justify-between gap-2">
-      <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
-        {icon}
-        <span className="truncate">{label}</span>
-      </span>
-      <Select
-        value={value}
-        onValueChange={(v) => onChange(v as ScenicPreference)}
-      >
-        <SelectTrigger className="h-8 w-[7.5rem] shrink-0" size="sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent container={menuContainer ?? undefined}>
-          {SCENIC_PREFERENCE_OPTIONS.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
-              {opt.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </label>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+          {icon}
+          <span className="truncate">{label}</span>
+        </div>
+        <span className="shrink-0 text-[11px] font-medium text-primary">
+          {preferenceLabel(value)}
+        </span>
+      </div>
+      <Slider
+        value={[index]}
+        min={0}
+        max={2}
+        step={1}
+        onValueChange={(v) => {
+          const next = Array.isArray(v) ? v[0] : v
+          onChange(indexToPreference(next))
+        }}
+        aria-label={`${label}: ${preferenceLabel(value)}`}
+      />
+      <div className="flex justify-between gap-1 text-[10px] leading-tight text-muted-foreground/80">
+        {SCENIC_PREFERENCE_LEVELS.map((level) => (
+          <span
+            key={level.value}
+            className={
+              level.value === value
+                ? 'font-medium text-foreground'
+                : undefined
+            }
+          >
+            {level.label}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -171,40 +191,37 @@ export function ScenicControls({
           onClick={onRouteToLocation}
         >
           <Navigation className="size-4" aria-hidden />
-          Route to my location (min 1 km extra)
+          Route to my location (min {MIN_EXTRA_KM_TO_LOCATION} km extra)
         </Button>
       ) : null}
 
-      <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-sm">
+      <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-card p-3 shadow-sm">
         <div className="text-xs font-semibold tracking-wide text-muted-foreground/80 uppercase">
           What makes a good ride today?
         </div>
-        <PreferenceSelect
+        <PreferenceSlider
           icon={<Leaf className="size-3.5 text-primary" aria-hidden />}
           label="Greenery"
           value={preferences.greenness}
           onChange={(v) =>
             onPreferences({ ...preferences, greenness: v })
           }
-          menuContainer={menuContainer}
         />
-        <PreferenceSelect
+        <PreferenceSlider
           icon={<Waves className="size-3.5 text-primary" aria-hidden />}
           label="Curves"
           value={preferences.curviness}
           onChange={(v) =>
             onPreferences({ ...preferences, curviness: v })
           }
-          menuContainer={menuContainer}
         />
-        <PreferenceSelect
+        <PreferenceSlider
           icon={<Mountain className="size-3.5 text-primary" aria-hidden />}
           label="Viewpoints"
           value={preferences.viewpoints}
           onChange={(v) =>
             onPreferences({ ...preferences, viewpoints: v })
           }
-          menuContainer={menuContainer}
         />
         {headingToLocation ? (
           <p className="text-[11px] text-muted-foreground">
@@ -273,12 +290,21 @@ export function ScenicControls({
           </div>
         </div>
 
-        <div className="mt-3 space-y-3 border-t border-border pt-3">
-          <div className="flex items-center gap-2">
-            <RouteIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            <p className="text-xs font-medium text-foreground">Extra distance</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
+        <details className="mt-3 border-t border-border pt-3 group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-foreground [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2">
+              <RouteIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              Extra distance
+              <span className="font-normal text-muted-foreground">
+                ({fmtExtraKmLabel(minExtraKm)} – {fmtExtraKmLabel(maxExtraKm)})
+              </span>
+            </span>
+            <ChevronDown
+              className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+              aria-hidden
+            />
+          </summary>
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
               <span className="text-[11px] text-muted-foreground">Min extra km</span>
               <Select
@@ -286,7 +312,7 @@ export function ScenicControls({
                 onValueChange={(v) => {
                   const nextMin = Number(v)
                   onMinExtraKm(nextMin)
-                  if (maxExtraKm < NO_MAX_EXTRA_KM && maxExtraKm < nextMin) {
+                  if (maxExtraKm < nextMin) {
                     onMaxExtraKm(nextMin)
                   }
                 }}
@@ -308,9 +334,9 @@ export function ScenicControls({
               <Select
                 value={String(maxExtraKm)}
                 onValueChange={(v) => {
-                  const nextMax = Number(v)
+                  const nextMax = clampMaxExtraKm(Number(v))
                   onMaxExtraKm(nextMax)
-                  if (nextMax < NO_MAX_EXTRA_KM && nextMax < minExtraKm) {
+                  if (nextMax < minExtraKm) {
                     onMinExtraKm(nextMax)
                   }
                 }}
@@ -319,18 +345,19 @@ export function ScenicControls({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent container={menuContainer ?? undefined}>
-                  {EXTRA_KM_MAX_OPTIONS.filter(
-                    (km) => km >= minExtraKm || km >= NO_MAX_EXTRA_KM,
-                  ).map((km) => (
-                    <SelectItem key={km} value={String(km)}>
-                      {fmtExtraKmLabel(km)}
-                    </SelectItem>
-                  ))}
+                  {EXTRA_KM_MAX_OPTIONS.filter((km) => km >= minExtraKm).map(
+                    (km) => (
+                      <SelectItem key={km} value={String(km)}>
+                        {fmtExtraKmLabel(km)}
+                      </SelectItem>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
             </label>
           </div>
-          <label className="flex flex-col gap-1">
+        </details>
+        <label className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
             <span className="text-[11px] text-muted-foreground">
               Your avg speed (km/h)
             </span>
@@ -344,10 +371,9 @@ export function ScenicControls({
                 onUserSpeedKmh(clampUserSpeedKmh(Number(e.target.value)))
               }
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-              aria-label="Average cycling speed in kilometers per hour"
-            />
-          </label>
-        </div>
+            aria-label="Average cycling speed in kilometers per hour"
+          />
+        </label>
       </div>
     </div>
   )

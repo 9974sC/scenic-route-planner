@@ -22,11 +22,15 @@ export const DEFAULT_WEIGHTS: ScenicWeights = {
 /** Maximum extra minutes the scenic picker may spend over the fastest route. */
 export const MAX_SPARE_MINUTES = 180
 
-/** Sentinel for “no max extra km” in dropdowns. */
-export const NO_MAX_EXTRA_KM = 999
+/** Default and maximum extra distance (km) for scenic detours. */
+export const DEFAULT_MAX_EXTRA_KM = 100
+export const MAX_EXTRA_KM_LIMIT = 500
 
 export const EXTRA_KM_MIN_OPTIONS = [0, 1, 2, 5, 10] as const
-export const EXTRA_KM_MAX_OPTIONS = [5, 10, 15, 25, 50, NO_MAX_EXTRA_KM] as const
+export const MIN_EXTRA_KM_TO_LOCATION = 5
+export const EXTRA_KM_MAX_OPTIONS = [
+  5, 10, 15, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500,
+] as const
 
 export const DEFAULT_USER_SPEED_KMH = 15
 export const MIN_USER_SPEED_KMH = 5
@@ -42,7 +46,7 @@ export type RoutePickConstraints = {
 export const DEFAULT_ROUTE_CONSTRAINTS: RoutePickConstraints = {
   budgetMinutes: 20,
   minExtraKm: 0,
-  maxExtraKm: NO_MAX_EXTRA_KM,
+  maxExtraKm: DEFAULT_MAX_EXTRA_KM,
   userSpeedKmh: DEFAULT_USER_SPEED_KMH,
 }
 
@@ -80,15 +84,71 @@ export function extraDurationMinutes(
 
 export function fmtDurationDelta(secondsDelta: number): string {
   const min = Math.round(secondsDelta / 60)
-  if (min === 0) return 'Same time'
+  if (min === 0) return '0 min'
   if (min > 0) return `+${min} min`
   return `${min} min`
 }
 
+export function fmtDistanceDelta(metersDelta: number): string {
+  const km = metersDelta / 1000
+  if (Math.abs(km) < 0.05) return '0 km'
+  const abs =
+    Math.abs(km) >= 10 ? Math.round(Math.abs(km)) : Math.round(Math.abs(km) * 10) / 10
+  if (km > 0) return `+${abs} km`
+  return `-${abs} km`
+}
+
+/** CSS tone for a delta vs the selected route (more = warmer, less = greener). */
+export function deltaTone(
+  delta: number,
+  sameThreshold: number,
+): 'more' | 'less' | 'same' {
+  if (Math.abs(delta) < sameThreshold) return 'same'
+  return delta > 0 ? 'more' : 'less'
+}
+
+export function deltaToneClass(tone: 'more' | 'less' | 'same'): string {
+  switch (tone) {
+    case 'more':
+      return 'text-amber-700 dark:text-amber-400'
+    case 'less':
+      return 'text-green-700 dark:text-green-400'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+function allCandidateIndices(count: number): number[] {
+  return Array.from({ length: count }, (_, i) => i)
+}
+
+function pickShortestIndex(
+  candidates: RouteCandidate[],
+  pool: number[],
+): number {
+  return pool.reduce(
+    (best, i) => (candidates[i].distance < candidates[best].distance ? i : best),
+    pool[0],
+  )
+}
+
+function pickLongestIndex(
+  candidates: RouteCandidate[],
+  pool: number[],
+): number {
+  return pool.reduce(
+    (best, i) => (candidates[i].distance > candidates[best].distance ? i : best),
+    pool[0],
+  )
+}
+
 export function fmtExtraKmLabel(km: number): string {
-  if (km >= NO_MAX_EXTRA_KM) return 'No limit'
-  if (km === 0) return '0 km'
   return `${km} km`
+}
+
+export function clampMaxExtraKm(km: number): number {
+  if (!Number.isFinite(km)) return DEFAULT_MAX_EXTRA_KM
+  return Math.max(1, Math.min(MAX_EXTRA_KM_LIMIT, Math.round(km)))
 }
 
 export function clampUserSpeedKmh(speed: number): number {
@@ -151,7 +211,7 @@ export function pickScenic(
   return finalists[0]?.index ?? directIndex
 }
 
-/** Pick outbound route by scenic, shortest, or longest within budget. */
+/** Pick outbound route by scenic, shortest, or longest. Shortest/longest use all candidates. */
 export function pickOutboundByPreference(
   candidates: RouteCandidate[],
   directIndex: number,
@@ -159,20 +219,14 @@ export function pickOutboundByPreference(
   constraints: RoutePickConstraints,
   preference: ReturnPathPreference,
 ): number {
-  const pool = eligibleReturnIndices(candidates, directIndex, constraints)
+  const all = allCandidateIndices(candidates.length)
 
   if (preference === 'shortest') {
-    return pool.reduce(
-      (best, i) => (candidates[i].distance < candidates[best].distance ? i : best),
-      pool[0],
-    )
+    return pickShortestIndex(candidates, all)
   }
 
   if (preference === 'longest') {
-    return pool.reduce(
-      (best, i) => (candidates[i].distance > candidates[best].distance ? i : best),
-      pool[0],
-    )
+    return pickLongestIndex(candidates, all)
   }
 
   return pickScenic(candidates, directIndex, weights, constraints)
@@ -198,12 +252,7 @@ function candidateEligible(
 
   const extraKm = extraDistanceKm(candidate, direct)
   if (extraKm < constraints.minExtraKm - 0.05) return false
-  if (
-    constraints.maxExtraKm < NO_MAX_EXTRA_KM &&
-    extraKm > constraints.maxExtraKm + 0.05
-  ) {
-    return false
-  }
+  if (extraKm > constraints.maxExtraKm + 0.05) return false
 
   return true
 }
@@ -231,20 +280,14 @@ export function pickReturnByPreference(
   outboundCoords: [number, number][],
   preference: ReturnPathPreference,
 ): number {
-  const pool = eligibleReturnIndices(candidates, directIndex, constraints)
+  const all = allCandidateIndices(candidates.length)
 
   if (preference === 'shortest') {
-    return pool.reduce(
-      (best, i) => (candidates[i].distance < candidates[best].distance ? i : best),
-      pool[0],
-    )
+    return pickShortestIndex(candidates, all)
   }
 
   if (preference === 'longest') {
-    return pool.reduce(
-      (best, i) => (candidates[i].distance > candidates[best].distance ? i : best),
-      pool[0],
-    )
+    return pickLongestIndex(candidates, all)
   }
 
   return pickReturnRoute(

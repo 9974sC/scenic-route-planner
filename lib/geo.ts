@@ -1,4 +1,8 @@
 import type { ElevationStats, LatLng } from './types'
+import { formatTileKey, parseTileKeyCoords } from './tile-keys'
+
+export { formatTileKey, parseTileKeyCoords, TILE_KEY_PREFIX } from './tile-keys'
+export { isValidNewTileKey, isValidStoredTileKey } from './tile-keys'
 
 export const WARSAW_CENTER: LatLng = { lat: 52.2297, lng: 21.0122 }
 
@@ -17,7 +21,7 @@ export const COVERAGE_GRID_ORIGIN: LatLng = {
 }
 
 /** Ground size of each coverage cell — square on the map (meters). */
-export const TILE_SIZE_M = 900
+export const TILE_SIZE_M = 450
 
 const R = 6371000 // earth radius meters
 const METERS_PER_DEG_LAT = (2 * Math.PI * R) / 360
@@ -33,21 +37,31 @@ function warsawGroundExtents() {
   return { heightM, widthM, centerLat }
 }
 
-/** Equal row and column count for the Warsaw square grid. */
-export function gridDimension(): number {
-  const { heightM, widthM } = warsawGroundExtents()
-  return Math.max(
-    Math.ceil(heightM / TILE_SIZE_M),
-    Math.ceil(widthM / TILE_SIZE_M),
-  )
-}
-
+/** Row count to cover the full playing-field height. */
 export function gridRowCount(): number {
-  return gridDimension()
+  const { heightM } = warsawGroundExtents()
+  return Math.max(1, Math.ceil(heightM / TILE_SIZE_M))
 }
 
-export function gridColCount(): number {
-  return gridDimension()
+/** Column count for a row (square ground cells; lng span varies by latitude). */
+export function gridColCount(ty: number): number {
+  const lngStep = tileLngStep(ty)
+  const widthDeg = WARSAW_BBOX.east - WARSAW_BBOX.west
+  return Math.max(1, Math.ceil(widthDeg / lngStep))
+}
+
+function maxGridColCount(): number {
+  const rows = gridRowCount()
+  let max = 0
+  for (let ty = 0; ty < rows; ty++) {
+    max = Math.max(max, gridColCount(ty))
+  }
+  return max
+}
+
+/** Largest grid axis extent (used where a single scalar is enough). */
+export function gridDimension(): number {
+  return Math.max(gridRowCount(), maxGridColCount())
 }
 
 export function tileLatStep(): number {
@@ -240,15 +254,14 @@ export function hash01(seed: string): number {
 /** key for the square coverage tile that contains a point */
 export function tileKey(lat: number, lng: number): string {
   const latStep = tileLatStep()
-  const n = gridDimension()
   let ty = Math.floor((lat - WARSAW_BBOX.south) / latStep)
-  ty = Math.max(0, Math.min(n - 1, ty))
+  ty = Math.max(0, Math.min(gridRowCount() - 1, ty))
 
   const lngStep = tileLngStep(ty)
   let tx = Math.floor((lng - WARSAW_BBOX.west) / lngStep)
-  tx = Math.max(0, Math.min(n - 1, tx))
+  tx = Math.max(0, Math.min(gridColCount(ty) - 1, tx))
 
-  return `${tx}:${ty}`
+  return formatTileKey(tx, ty)
 }
 
 /** all tile keys a path passes through (sampled every ~half a cell) */
@@ -274,21 +287,28 @@ export function tilesForPath(coords: [number, number][]): Set<string> {
 
 /** bounds (SW/NE latlng) for a tile key */
 export function tileBounds(key: string): [[number, number], [number, number]] {
-  const [tx, ty] = key.split(':').map(Number)
+  const parsed = parseTileKeyCoords(key)
+  if (!parsed) {
+    throw new Error(`Invalid tile key: ${key}`)
+  }
   const latStep = tileLatStep()
-  const south = WARSAW_BBOX.south + ty * latStep
-  const north = south + latStep
-  const lngStep = tileLngStep(ty)
-  const west = WARSAW_BBOX.west + tx * lngStep
-  const east = west + lngStep
+  const south = WARSAW_BBOX.south + parsed.ty * latStep
+  const north = Math.min(south + latStep, WARSAW_BBOX.north)
+  const lngStep = tileLngStep(parsed.ty)
+  const west = WARSAW_BBOX.west + parsed.tx * lngStep
+  const east = Math.min(west + lngStep, WARSAW_BBOX.east)
   return [
     [south, west],
     [north, east],
   ]
 }
 
-/** total tiles in the N×N Warsaw playing field */
+/** total tiles across the full rectangular playing field */
 export function totalTiles(): number {
-  const n = gridDimension()
-  return n * n
+  const rows = gridRowCount()
+  let total = 0
+  for (let ty = 0; ty < rows; ty++) {
+    total += gridColCount(ty)
+  }
+  return total
 }

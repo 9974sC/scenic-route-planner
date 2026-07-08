@@ -18,7 +18,8 @@ import { PastPathsLayer } from '@/components/past-paths-layer'
 import { TurnMarkersLayer } from '@/components/turn-markers-layer'
 import { RouteEndpointMarkers } from '@/components/route-endpoint-markers'
 import { UserLocationMarker } from '@/components/user-location-marker'
-import { LeaderboardGridLayer } from '@/components/leaderboard-grid-layer'
+import { LeaderboardTilesLayer } from '@/components/leaderboard-tiles-layer'
+import { PlayingFieldGridLayer } from '@/components/playing-field-grid-layer'
 import { CoveredTilesLayer } from '@/components/covered-tiles-layer'
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import { useTheme } from '@/components/theme-provider'
@@ -299,10 +300,13 @@ export default function ScenicMap({
     () =>
       alternateRoutes.map((route, i) => ({
         ...route,
-        color: C.alternates[i % C.alternates.length],
+        color: route.isDirect
+          ? C.directRed
+          : (route.color ?? C.alternates[i % C.alternates.length]),
       })),
-    [alternateRoutes, C.alternates],
+    [alternateRoutes, C.alternates, C.directRed],
   )
+  const directShownAsAlternate = themedAlternates.some((route) => route.isDirect)
 
   return (
     <MapContainer
@@ -330,19 +334,27 @@ export default function ScenicMap({
       <MapFocusController focus={mapFocus} />
       <MapPickHandler active={mapPickActive} onPick={onMapPick} />
 
-      {leaderboardOpen && leaderboardEntries.length > 0 ? (
-        <LeaderboardGridLayer
-          visible
-          entries={leaderboardEntries}
-          lineOpacity={C.gridLine}
-        />
+      {leaderboardOpen ? (
+        <>
+          <PlayingFieldGridLayer gridColor={C.gridStroke} />
+          {leaderboardEntries.length > 0 ? (
+            <LeaderboardTilesLayer
+              entries={leaderboardEntries}
+              gridColor={C.gridStroke}
+              fillOpacity={C.gridFill + 0.14}
+            />
+          ) : null}
+        </>
       ) : showCoverage ? (
-        <CoveredTilesLayer
-          coveredKeys={coveredTiles}
-          color={tileColor}
-          gridColor={C.gridStroke}
-          fillOpacity={C.gridFill + 0.14}
-        />
+        <>
+          <PlayingFieldGridLayer gridColor={C.gridStroke} />
+          <CoveredTilesLayer
+            coveredKeys={coveredTiles}
+            color={tileColor}
+            gridColor={C.gridStroke}
+            fillOpacity={C.gridFill + 0.14}
+          />
+        </>
       ) : null}
 
       <PastPathsLayer paths={pastPaths} theme={resolvedTheme} />
@@ -358,8 +370,12 @@ export default function ScenicMap({
         />
       )}
 
-      {/* Direct / fastest route — red & orange dashed overlay */}
-      {direct && chosen && direct.id !== chosen.id && !isRoundTrip && (
+      {/* Direct / fastest route — red dashed when not selectable as alternate */}
+      {direct &&
+        chosen &&
+        direct.id !== chosen.id &&
+        !isRoundTrip &&
+        !directShownAsAlternate && (
         <>
           <Polyline
             positions={direct.coords}

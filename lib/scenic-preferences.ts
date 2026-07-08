@@ -46,11 +46,33 @@ export function weightsToPreferences(weights: ScenicWeights): ScenicPreferenceSe
   }
 }
 
-export const SCENIC_PREFERENCE_OPTIONS: {
+export const SCENIC_PREFERENCE_LEVELS: {
   value: ScenicPreference
   label: string
 }[] = [
-  { value: 'no', label: 'No' },
-  { value: 'idc', label: "Don't care" },
-  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'Not important' },
+  { value: 'idc', label: 'Nice to have' },
+  { value: 'yes', label: 'Very important' },
 ]
+
+/** @deprecated Use SCENIC_PREFERENCE_LEVELS */
+export const SCENIC_PREFERENCE_OPTIONS = SCENIC_PREFERENCE_LEVELS
+
+export function preferenceToIndex(p: ScenicPreference): number {
+  if (p === 'no') return 0
+  if (p === 'yes') return 2
+  return 1
+}
+
+export function indexToPreference(index: number): ScenicPreference {
+  if (index <= 0) return 'no'
+  if (index >= 2) return 'yes'
+  return 'idc'
+}
+
+export function preferenceLabel(p: ScenicPreference): string {
+  return (
+    SCENIC_PREFERENCE_LEVELS.find((level) => level.value === p)?.label ??
+    'Nice to have'
+  )
+}

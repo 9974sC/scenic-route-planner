@@ -12,6 +12,7 @@ import type { MeResponse } from '@/lib/auth-types'
 import { dbErrorResponse } from '@/lib/db/errors'
 import { tripToSummary } from '@/lib/trips'
 import { savedRouteToSummary } from '@/lib/saved-routes'
+import { normalizeStoredTileKeys } from '@/lib/tile-migration'
 import {
   colorChangeStatus,
   validateBio,
@@ -61,7 +62,7 @@ export async function GET() {
 
     const payload: MeResponse = {
       user,
-      claimedTiles: tileRows.map((r) => r.tileKey),
+      claimedTiles: normalizeStoredTileKeys(tileRows.map((r) => r.tileKey)),
       trips: tripRows.map(tripToSummary),
       savedRoutes: savedRows.map(savedRouteToSummary),
     }

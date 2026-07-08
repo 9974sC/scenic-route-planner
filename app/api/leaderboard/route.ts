@@ -5,6 +5,7 @@ import { claimedTiles, trips, users } from '@/lib/db/schema'
 import { dbErrorResponse } from '@/lib/db/errors'
 import type { LeaderboardEntry, LeaderboardResponse } from '@/lib/leaderboard-types'
 import { totalTiles } from '@/lib/geo'
+import { normalizeStoredTileKeys } from '@/lib/tile-migration'
 import { displayUserId } from '@/lib/user-code'
 
 export const dynamic = 'force-dynamic'
@@ -82,7 +83,7 @@ export async function GET() {
         totalDistanceM: stats?.totalDistanceM ?? 0,
       }
       if (i < MAP_TILE_USER_LIMIT) {
-        entry.tileKeys = data.tileKeys
+        entry.tileKeys = normalizeStoredTileKeys(data.tileKeys)
       }
       return entry
     })

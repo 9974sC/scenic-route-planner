@@ -71,7 +71,7 @@ export function TripHistoryPanel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-muted/25 p-2.5 sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-muted/25 p-2.5">
         <StatBlock label="Distance" value={fmtDistance(periodStats.distanceM)} />
         <StatBlock label="Time" value={fmtDuration(periodStats.durationS)} />
         <StatBlock
@@ -82,11 +82,13 @@ export function TripHistoryPanel() {
               : '—'
           }
         />
-        <StatBlock
-          label={`Avg coverage (${windowDays}d)`}
-          value={fmtCoveragePct(periodStats.avgCoveragePct)}
-        />
       </div>
+      <p className="whitespace-nowrap text-xs text-muted-foreground">
+        Avg coverage ({windowDays}d):{' '}
+        <span className="font-semibold tabular-nums text-foreground">
+          {fmtCoveragePct(periodStats.avgCoveragePct)}
+        </span>
+      </p>
 
       <ul className="flex max-h-44 flex-col gap-2 overflow-y-auto">
         {trips.slice(0, 8).map((trip) => {

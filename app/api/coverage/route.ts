@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db'
 import { claimedTiles } from '@/lib/db/schema'
 import { requireUser } from '@/lib/auth'
 import { dbErrorResponse } from '@/lib/db/errors'
+import { isValidNewTileKey } from '@/lib/tile-keys'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     }
 
     const valid = tileKeys.filter(
-      (k) => typeof k === 'string' && /^\d+:\d+$/.test(k),
+      (k) => typeof k === 'string' && isValidNewTileKey(k),
     )
     if (!valid.length) {
       return NextResponse.json({ error: 'No valid tile keys' }, { status: 400 })

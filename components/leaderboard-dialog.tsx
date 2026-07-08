@@ -59,8 +59,8 @@ export function LeaderboardDialog({
 
         <div className="overflow-y-auto px-4 py-3">
           <p className="mb-3 text-xs text-muted-foreground">
-            Coverage grid is colored by each rider&apos;s map color while the
-            leaderboard is open.
+            The dashed coverage grid appears on the map. Top riders&apos; tiles
+            are filled with their map colors.
           </p>
 
           {loading ? (

@@ -9,6 +9,7 @@ export type AlternateRoute = {
   candidate: RouteCandidate
   index: number
   color?: string
+  isDirect?: boolean
 }
 
 type Props = {
@@ -60,9 +61,10 @@ export function AlternateRoutesLayer({
 
   return (
     <>
-      {routes.map(({ candidate, index, color }) => {
+      {routes.map(({ candidate, index, color, isDirect }) => {
         const hovered = hoveredIndex === index
         const events = handlers(index)
+        const lineColor = color ?? (isDirect ? '#dc2626' : '#7c3aed')
 
         return (
           <Fragment key={candidate.id}>
@@ -78,9 +80,10 @@ export function AlternateRoutesLayer({
             <Polyline
               positions={candidate.coords}
               pathOptions={{
-                color: color ?? '#7c3aed',
-                weight: hovered ? 7 : 5,
-                opacity: hovered ? 0.85 : 0.55,
+                color: lineColor,
+                weight: hovered ? 8 : isDirect ? 6 : 5,
+                opacity: hovered ? 0.9 : isDirect ? 0.8 : 0.55,
+                dashArray: isDirect ? '10 8' : undefined,
                 lineJoin: 'round',
                 lineCap: 'round',
               }}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { LatLng, RouteResponse } from '@/lib/types'
-import { PLACES, pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, NO_MAX_EXTRA_KM, DEFAULT_USER_SPEED_KMH, clampUserSpeedKmh, type ReturnPathPreference, type RoutePickConstraints } from '@/lib/scenic'
+import { PLACES, pickOutboundByPreference, pickReturnByPreference, rankReturnCandidates, DEFAULT_MAX_EXTRA_KM, DEFAULT_USER_SPEED_KMH, clampUserSpeedKmh, MIN_EXTRA_KM_TO_LOCATION, type ReturnPathPreference, type RoutePickConstraints } from '@/lib/scenic'
 import {
   DEFAULT_PREFERENCES,
   preferencesToWeights,
@@ -19,6 +19,7 @@ import {
   mapPickEndpoint,
 } from '@/lib/places'
 import { tilesForPath } from '@/lib/geo'
+import { normalizeStoredTileKeys } from '@/lib/tile-migration'
 import type { PastPath } from '@/lib/past-paths'
 import { tripToPastPath } from '@/lib/past-paths'
 import { joinLoopCoords } from '@/lib/route-overlap'
@@ -31,7 +32,7 @@ import {
 import { ScenicControls } from '@/components/scenic-controls'
 import { RouteSummary } from '@/components/route-summary'
 import { CoveragePanel } from '@/components/coverage-panel'
-import { MapRightRail } from '@/components/map-right-rail'
+import { DirectionsPanel } from '@/components/directions-panel'
 import { MapToolbar } from '@/components/map-toolbar'
 import { LocateMeButton } from '@/components/locate-me-button'
 import { AuthPanel } from '@/components/auth-panel'
@@ -75,7 +76,7 @@ export function ScenicApp() {
   )
   const [budget, setBudget] = useState(20)
   const [minExtraKm, setMinExtraKm] = useState(0)
-  const [maxExtraKm, setMaxExtraKm] = useState(NO_MAX_EXTRA_KM)
+  const [maxExtraKm, setMaxExtraKm] = useState(DEFAULT_MAX_EXTRA_KM)
   const [userSpeedKmh, setUserSpeedKmh] = useState(DEFAULT_USER_SPEED_KMH)
 
   const routeConstraints = useMemo<RoutePickConstraints>(
@@ -98,7 +99,7 @@ export function ScenicApp() {
   const [localCoverage, setLocalCoverage] = useState<Set<string>>(new Set())
   const [localPastPaths, setLocalPastPaths] = useState<PastPath[]>([])
   const coverage = useMemo(() => {
-    if (user) return new Set(claimedTiles)
+    if (user) return new Set(normalizeStoredTileKeys(claimedTiles))
     return localCoverage
   }, [user, claimedTiles, localCoverage])
   const [showCoverage, setShowCoverage] = useState(false)
@@ -132,8 +133,8 @@ export function ScenicApp() {
   const loopDisabled = endpointsEqual(start, end)
 
   useEffect(() => {
-    if (isLocationEndpoint(end) && minExtraKm < 1) {
-      setMinExtraKm(1)
+    if (isLocationEndpoint(end) && minExtraKm < MIN_EXTRA_KM_TO_LOCATION) {
+      setMinExtraKm(MIN_EXTRA_KM_TO_LOCATION)
     }
   }, [end, minExtraKm])
 
@@ -268,11 +269,12 @@ export function ScenicApp() {
   const alternateRoutes = useMemo(() => {
     if (!data || !direct) return []
     return data.candidates
-      .map((candidate, index) => ({ candidate, index }))
-      .filter(
-        ({ index }) => index !== chosenIndex && index !== data.directIndex,
-      )
-      .map(({ candidate, index }) => ({ candidate, index }))
+      .map((candidate, index) => ({
+        candidate,
+        index,
+        isDirect: index === data.directIndex,
+      }))
+      .filter(({ index }) => index !== chosenIndex)
   }, [data, direct, chosenIndex])
 
   const pastPaths = useMemo(() => {
@@ -395,26 +397,56 @@ export function ScenicApp() {
   }, [])
 
   const handleChooseShortestReturn = useCallback(() => {
-    if (returnData) {
+    if (returnData && chosen) {
+      const idx = pickReturnByPreference(
+        returnData.candidates,
+        returnData.directIndex,
+        weights,
+        routeConstraints,
+        chosen.coords,
+        'shortest',
+      )
       setReturnPreference('shortest')
-      setManualReturnIndex(null)
+      setManualReturnIndex(idx)
       return
     }
     if (!data) return
+    const idx = pickOutboundByPreference(
+      data.candidates,
+      data.directIndex,
+      weights,
+      routeConstraints,
+      'shortest',
+    )
     setOutboundPreference('shortest')
-    setManualChosenIndex(null)
-  }, [returnData, data])
+    setManualChosenIndex(idx)
+  }, [returnData, chosen, data, weights, routeConstraints])
 
   const handleChooseLongestReturn = useCallback(() => {
-    if (returnData) {
+    if (returnData && chosen) {
+      const idx = pickReturnByPreference(
+        returnData.candidates,
+        returnData.directIndex,
+        weights,
+        routeConstraints,
+        chosen.coords,
+        'longest',
+      )
       setReturnPreference('longest')
-      setManualReturnIndex(null)
+      setManualReturnIndex(idx)
       return
     }
     if (!data) return
+    const idx = pickOutboundByPreference(
+      data.candidates,
+      data.directIndex,
+      weights,
+      routeConstraints,
+      'longest',
+    )
     setOutboundPreference('longest')
-    setManualChosenIndex(null)
-  }, [returnData, data])
+    setManualChosenIndex(idx)
+  }, [returnData, chosen, data, weights, routeConstraints])
 
   const handleSwap = useCallback(() => {
     setStartManual(end)
@@ -433,7 +465,7 @@ export function ScenicApp() {
   const handleRouteToLocation = useCallback(() => {
     if (!userPosition) return
     setEnd(locationEndpoint(userPosition))
-    setMinExtraKm((prev) => Math.max(prev, 1))
+    setMinExtraKm((prev) => Math.max(prev, MIN_EXTRA_KM_TO_LOCATION))
   }, [userPosition])
 
   const handleLoadSavedRoute = useCallback((route: SavedRouteSummary) => {
@@ -850,12 +882,14 @@ export function ScenicApp() {
           directionsOpen={directionsOpen}
           onDirectionsToggle={() => setDirectionsOpen((open) => !open)}
           hasDirections={Boolean(chosen && directionSteps.length > 0)}
-          directionsPanelOpen
+          weather={weather}
+          weatherLoading={weatherLoading}
+          weatherError={weatherError}
         />
         <LocateMeButton
           active={followingUser}
           onLocate={handleLocate}
-          directionsPanelOpen
+          directionsPanelOpen={directionsOpen}
         />
         <ScenicMap
           start={start.point}
@@ -884,9 +918,9 @@ export function ScenicApp() {
           leaderboardEntries={leaderboardEntries}
           mapFocus={mapFocus}
         />
-        <MapRightRail
-          directionsOpen={directionsOpen}
-          onDirectionsOpenChange={setDirectionsOpen}
+        <DirectionsPanel
+          open={directionsOpen}
+          onOpenChange={setDirectionsOpen}
           steps={directionSteps}
           startLabel={start.name}
           endLabel={end.name}
@@ -895,9 +929,6 @@ export function ScenicApp() {
           currentPositionLabel={currentPositionLabel}
           distanceToNextM={distanceToNextM}
           hasRoute={Boolean(chosen && directionSteps.length > 0)}
-          weather={weather}
-          weatherLoading={weatherLoading}
-          weatherError={weatherError}
           onStepSelect={handleDirectionStepSelect}
         />
       </div>

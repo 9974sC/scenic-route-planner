@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db'
 import { claimedTiles, trips } from '@/lib/db/schema'
 import { requireUser } from '@/lib/auth'
 import { dbErrorResponse } from '@/lib/db/errors'
+import { isValidNewTileKey } from '@/lib/tile-keys'
 import { parseRouteCoords } from '@/lib/past-paths'
 import { tripToSummary } from '@/lib/trips'
 
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
     }
 
     const validTiles = tileKeys.filter(
-      (k) => typeof k === 'string' && /^\d+:\d+$/.test(k),
+      (k) => typeof k === 'string' && isValidNewTileKey(k),
     )
     const routeCoords = parseRouteCoords(rawRouteCoords) ?? [
       [startLat, startLng],
