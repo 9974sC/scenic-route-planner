@@ -52,6 +52,7 @@ import { TripHistoryPanel } from '@/components/trip-history-panel'
 import { useAuth } from '@/components/auth-provider'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LeaderboardDialog } from '@/components/leaderboard-dialog'
+import { LocationNotFoundDialog } from '@/components/location-not-found-dialog'
 import { RideCompleteDialog } from '@/components/ride-complete-dialog'
 import type { LeaderboardEntry } from '@/lib/leaderboard-types'
 import type { WeatherResponse } from '@/lib/weather-types'
@@ -779,6 +780,17 @@ export function ScenicApp() {
         isRoundTrip={Boolean(returnLeg)}
         tilesCounted={Boolean(user)}
       />
+      <LocationNotFoundDialog
+        open={geoError !== null}
+        onClose={() => setGeoError(null)}
+        variant="geolocation"
+        title={
+          geoError === 'Location is not supported in this browser.'
+            ? 'Location not supported'
+            : undefined
+        }
+        message={geoError ?? undefined}
+      />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       {/* Control column */}
       <div
@@ -893,12 +905,6 @@ export function ScenicApp() {
 
         <ProfilePanel />
         <SavedRoutesPanel onLoadRoute={handleLoadSavedRoute} />
-
-        {geoError ? (
-          <p className="text-sm text-destructive" role="alert">
-            {geoError}
-          </p>
-        ) : null}
 
         {saveError ? (
           <p className="text-sm text-destructive" role="alert">

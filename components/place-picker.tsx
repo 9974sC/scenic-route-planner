@@ -12,6 +12,7 @@ import {
 import { createPortal } from 'react-dom'
 import { ChevronDown, Loader2, MapPin, Navigation } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { LocationNotFoundDialog } from '@/components/location-not-found-dialog'
 import type { RouteEndpoint } from '@/lib/places'
 import type { LatLng } from '@/lib/types'
 import {
@@ -132,6 +133,11 @@ export function PlacePicker({
   const [remote, setRemote] = useState<RouteEndpoint[]>([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const [locationNotFoundOpen, setLocationNotFoundOpen] = useState(false)
+  const [locationNotFoundQuery, setLocationNotFoundQuery] = useState('')
+  const [locationNotFoundTitle, setLocationNotFoundTitle] = useState<string>()
+  const [locationNotFoundMessage, setLocationNotFoundMessage] = useState<string>()
+  const lastNotFoundKeyRef = useRef<string | null>(null)
 
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -191,6 +197,50 @@ export function PlacePicker({
     setSearchError(null)
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [open])
+
+  useEffect(() => {
+    if (!open) {
+      lastNotFoundKeyRef.current = null
+      setLocationNotFoundOpen(false)
+    }
+  }, [open])
+
+  const closeLocationNotFound = useCallback(() => {
+    setLocationNotFoundOpen(false)
+    setSearchError(null)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+
+    const q = query.trim()
+    if (searchError) {
+      const key = `err:${q}:${searchError}`
+      if (lastNotFoundKeyRef.current === key) return
+      lastNotFoundKeyRef.current = key
+      setLocationNotFoundQuery(q)
+      setLocationNotFoundTitle('Search failed')
+      setLocationNotFoundMessage(searchError)
+      setLocationNotFoundOpen(true)
+      return
+    }
+
+    if (searching || q.length < 2) return
+
+    const coord = parseCoordinateQuery(query)
+    if (items.length > 0 || coord) {
+      lastNotFoundKeyRef.current = null
+      return
+    }
+
+    const key = `empty:${q}`
+    if (lastNotFoundKeyRef.current === key) return
+    lastNotFoundKeyRef.current = key
+    setLocationNotFoundQuery(q)
+    setLocationNotFoundTitle(undefined)
+    setLocationNotFoundMessage(undefined)
+    setLocationNotFoundOpen(true)
+  }, [open, searching, query, items.length, searchError])
 
   useEffect(() => {
     if (!open) return
@@ -296,19 +346,6 @@ export function PlacePicker({
                   Searching…
                 </li>
               ) : null}
-
-              {searchError ? (
-                <li className="px-2 py-2 text-xs text-destructive">{searchError}</li>
-              ) : null}
-
-              {!searching &&
-              query.trim().length >= 2 &&
-              items.length === 0 &&
-              !coordCandidate ? (
-                <li className="px-2 py-2 text-xs text-muted-foreground">
-                  No matches. Try a street or 52.23, 21.01
-                </li>
-              ) : null}
             </ul>
           </div>,
           popupRoot,
@@ -397,6 +434,14 @@ export function PlacePicker({
       </div>
 
       {popup}
+
+      <LocationNotFoundDialog
+        open={locationNotFoundOpen}
+        onClose={closeLocationNotFound}
+        query={locationNotFoundQuery}
+        title={locationNotFoundTitle}
+        message={locationNotFoundMessage}
+      />
     </div>
   )
 }
